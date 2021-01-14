@@ -1,0 +1,12 @@
+{
+    bin_paths: {
+        ios-deploy: "bin/ios-deploy",
+        mobiledevice: "bin/mobiledevice",
+        ios_video_stream: "bin/ios_video_stream"
+    },
+    controlfloor: {
+        host: "127.0.0.1:8080",
+        username: "first",
+    }
+    port: 8027
+}
