@@ -8,13 +8,22 @@ import (
     log "github.com/sirupsen/logrus"
 )
 
+type CDevice struct {
+    udid string
+    width int
+    height int
+    clickWidth int
+    clickHeight int
+}
+
 type Config struct {
-    iosDeployPath    string
-    mobiledevicePath string
+    iosDeployPath      string
+    mobiledevicePath   string
     iosVideoStreamPath string
-    httpPort         int
-    cfHost           string
-    cfUsername       string
+    httpPort           int
+    cfHost             string
+    cfUsername         string
+    devs               map [string] CDevice
 }
 
 func NewConfig( configPath string ) (*Config) {
@@ -55,7 +64,31 @@ func NewConfig( configPath string ) (*Config) {
     }
     config.cfUsername = cfIdNode.String()
     
+    config.devs = readDevs( root )
+    
     return &config
+}
+
+func readDevs( root *uj.JNode ) ( map[string]CDevice ) {
+    devs := make( map[string]CDevice )
+    
+    devsNode := root.Get("devices")
+    devsNode.ForEach( func( devNode *uj.JNode ) {
+        udid := devNode.Get("udid").String()
+        width := devNode.Get("mainScreenWidth").Int()
+        height := devNode.Get("mainScreenHeight").Int()
+        scale := devNode.Get("mainScreenScale").Int()
+            
+        dev := CDevice{
+            udid: udid,
+            width: width,
+            height: height,
+            clickWidth: (width/scale),
+            clickHeight: (height/scale),
+        }
+        devs[ udid ] = dev
+    } )
+    return devs
 }
 
 func loadConfig( configPath string ) (*uj.JNode) {

@@ -8,20 +8,25 @@ import (
     "net/http/cookiejar"
     "net/url"
     "os"
+    "strconv"
     "sync"
     log "github.com/sirupsen/logrus"
     uj "github.com/nanoscopic/ujsonin/mod"
+    ws "github.com/gorilla/websocket"
 )
 
 type ControlFloor struct {
-    config    *Config
-    ready     bool
-    base      string
-    cookiejar *cookiejar.Jar
-    client    *http.Client
-    root      *uj.JNode
-    pass      string
-    lock      *sync.Mutex
+    config     *Config
+    ready      bool
+    base       string
+    wsBase     string
+    cookiejar  *cookiejar.Jar
+    client     *http.Client
+    root       *uj.JNode
+    pass       string
+    lock       *sync.Mutex
+    DevTracker *DeviceTracker
+    vidConns   map[string] *ws.Conn
 }
 
 func NewControlFloor( config *Config ) (*ControlFloor) {
@@ -37,16 +42,23 @@ func NewControlFloor( config *Config ) (*ControlFloor) {
     
     pass := passNode.String()
     
-    client := &http.Client{ Jar: jar }
+    client := &http.Client{
+        Jar: jar,
+        CheckRedirect: func(req *http.Request, via []*http.Request) error {
+            return http.ErrUseLastResponse
+        },
+    }
     
     self := ControlFloor{
         config: config,
         ready: false,
         base: "http://" + config.cfHost,
+        wsBase: "ws://" + config.cfHost,
         cookiejar: jar,
         client: client,
         pass: pass,
         lock: &sync.Mutex{},
+        vidConns: make( map[string] *ws.Conn ),
     }
     
     success := self.login()
@@ -56,7 +68,123 @@ func NewControlFloor( config *Config ) (*ControlFloor) {
         fmt.Println("Could not login to control floor")
     }
     
+    self.openWebsocket()
+    
     return &self
+}
+
+type CFResponse interface {
+    asText() (string)
+}
+
+type CFR_Pong struct {
+    id int
+    text string
+}
+
+func (self *CFR_Pong) asText() string {
+    return fmt.Sprintf("{id:%d,text:\"%s\"}\n",self.id, self.text)
+}
+
+func ( self *ControlFloor ) startStream( udid string ) {
+    dialer := ws.Dialer{
+        Jar: self.cookiejar,
+    }
+    
+    fmt.Printf("Connecting to CF imgStream\n")
+    conn, _, err := dialer.Dial( self.wsBase + "/provider/imgStream?udid=" + udid, nil )
+    if err != nil {
+        panic( err )
+    }
+    
+    dev := self.DevTracker.getDevice( udid )
+    
+    self.lock.Lock()
+    self.vidConns[ udid ] = conn
+    self.lock.Unlock()
+    
+    dev.startStream( conn )
+}
+
+func ( self *ControlFloor ) stopStream( udid string ) {
+    vidConn := self.vidConns[ udid ]
+    vidConn.Close()
+    
+    self.lock.Lock()
+    delete( self.vidConns, udid )
+    self.lock.Unlock()
+}
+
+func ( self *ControlFloor ) openWebsocket() {
+    dialer := ws.Dialer{
+        Jar: self.cookiejar,
+    }
+    
+    conn, _, err := dialer.Dial( self.wsBase + "/provider/ws", nil )
+    if err != nil {
+        panic( err )
+    }
+    
+    respondChan := make( chan CFResponse )
+    doneChan := make( chan bool )
+    // response channel exists so that multiple threads can queue
+    //   responses. WriteMessage is not thread safe
+    go func() { for {
+        select {
+            case <- doneChan:
+                break
+            case resp := <- respondChan:
+                rText := resp.asText()
+                err := conn.WriteMessage( ws.TextMessage, []byte(rText) )
+                if err != nil {
+                    fmt.Printf("Error writing to ws\n")
+                    break
+                }
+        }
+    } }()
+        
+    // There is only a single websocket connection between a provider and controlfloor
+    // As a result, all messages sent here ought to be small, because if they aren't
+    // other messages will be delayed being received and some action started.
+    go func() {
+        for {
+            t, msg, err := conn.ReadMessage()
+            if err != nil {
+                fmt.Printf("Error reading from ws\n")
+                break
+            }
+            if t == ws.TextMessage {
+                //tMsg := string( msg )
+                b1 := []byte{ msg[0] }
+                if string(b1) == "{" {
+                    root, _ := uj.Parse( msg )
+                    id := root.Get("id").Int()
+                    mType := root.Get("type").String()
+                    if mType == "ping" {
+                        respondChan <- &CFR_Pong{ id: id, text: "pong" }
+                    } else if mType == "click" {
+                        udid := root.Get("udid").String()
+                        x := root.Get("x").Int()
+                        y := root.Get("y").Int()
+                        go func() {
+                            dev := self.DevTracker.getDevice( udid )
+                            if dev != nil {
+                                dev.clickAt( x, y )
+                            }
+                        } ()
+                    } else if mType == "startStream" {
+                        udid := root.Get("udid").String()
+                        fmt.Printf("Got request to start video stream for %s\n", udid )
+                        go func() { self.startStream( udid ) }()
+                    } else if mType == "stopStream" {
+                        udid := root.Get("udid").String()
+                        go func() { self.stopStream( udid ) }()
+                    }
+                }
+            }
+        }
+        doneChan <- true
+    }()    
 }
 
 func loadCFConfig( configPath string ) (*uj.JNode) {
@@ -80,99 +208,78 @@ func loadCFConfig( configPath string ) (*uj.JNode) {
     return root
 }
 
-func (self *ControlFloor) notifyDeviceInfo( dev *Device ) {
+func writeCFConfig( configPath string, pass string ) {
+    bytes := []byte(fmt.Sprintf("{pass:\"%s\"}\n",pass))
+    err := ioutil.WriteFile( configPath, bytes, 0644)
+    if err != nil {
+        panic( err )
+    }
+}
+
+func (self *ControlFloor) baseNotify( name string, udid string, vals url.Values ) {
     ok := self.checkLogin()
     if ok == false {
-        panic("Could not login when attempting to notify of device info")
+        panic("Could not login when attempting '" + name + "' notify")
     }
     
+    resp, err := self.client.PostForm( self.base + "/provider/devStatus", vals )
+    if err != nil {
+        panic( err )
+    }
+    
+    if resp.StatusCode != 200 {
+        fmt.Printf("Got status %d from '%s' notify\n", resp.StatusCode, name )
+    } else {
+        fmt.Printf("Notified control floor of '%s'; uuid=%s\n", name, censorUuid( udid ) )
+    }
+}
+
+func (self *ControlFloor) notifyDeviceInfo( dev *Device ) {
     info := dev.info
-    uuid := dev.uuid
+    udid := dev.uuid
     str := "{"
     for key, val := range info {
         str = str + fmt.Sprintf("\"%s\":\"%s\",", key, val )
     }
     str = str + "}"
     
-    _, err := self.client.PostForm( self.base + "/provider/devStatus",
-        url.Values{
-            "status": {"info"},
-            "uuid": {uuid},
-            "info": {str},
-        },
-    )
-    if err != nil {
-        panic( err )
-    }
+    self.baseNotify("device info", udid, url.Values{
+        "status": {"info"},
+        "udid": {udid},
+        "info": {str},
+    } )
 }
 
-func (self *ControlFloor) notifyDeviceExists( uuid string ) {
-    ok := self.checkLogin()
-    if ok == false {
-        panic("Could not login when attempting to notify of device existence")
-    }
-    
-    resp, err := self.client.PostForm( self.base + "/provider/devStatus",
-        url.Values{
-            "status": {"exists"},
-            "uuid": {uuid},
-        },
-    )
-    if err != nil {
-        panic( err )
-    }
-    
-    if resp.StatusCode != 200 {
-        fmt.Printf("Got status %d from device existence notify\n", resp.StatusCode )
-    } else {
-        fmt.Printf("Notified control floor of device existence; uuid=%s\n", censorUuid( uuid ) )
-    }
+func (self *ControlFloor) notifyDeviceExists( udid string, width int, height int, clickWidth int, clickHeight int ) {
+    self.baseNotify("device existence", udid, url.Values{
+        "status": {"exists"},
+        "udid": {udid},
+        "width": {strconv.Itoa(width)},
+        "height": {strconv.Itoa(height)},
+        "clickWidth": {strconv.Itoa(clickWidth)},
+        "clickHeight": {strconv.Itoa(clickHeight)},
+    } )
 }
 
-func (self *ControlFloor) notifyProvisionStopped( uuid string ) {
-    ok := self.checkLogin()
-    if ok == false {
-        panic("Could not login when attempting to notify of device existence")
-    }
-    
-    resp, err := self.client.PostForm( self.base + "/provider/devStatus",
-        url.Values{
-            "status": {"provisionStopped"},
-            "uuid": {uuid},
-        },
-    )
-    if err != nil {
-        panic( err )
-    }
-    
-    if resp.StatusCode != 200 {
-        fmt.Printf("Got status %d from device existence notify\n", resp.StatusCode )
-    } else {
-        fmt.Printf("Notified control floor of device existence; uuid=%s\n", censorUuid( uuid ) )
-    }
+func (self *ControlFloor) notifyProvisionStopped( udid string ) {
+    self.baseNotify("provision stop", udid, url.Values{
+        "status": {"provisionStopped"},
+        "udid": {udid},
+    } )
 }
 
-func (self *ControlFloor) notifyWdaStarted( uuid string ) {
-    ok := self.checkLogin()
-    if ok == false {
-        panic("Could not login when attempting to notify of device existence")
-    }
-    
-    resp, err := self.client.PostForm( self.base + "/provider/devStatus",
-        url.Values{
-            "status": {"wdaStarted"},
-            "uuid": {uuid},
-        },
-    )
-    if err != nil {
-        panic( err )
-    }
-    
-    if resp.StatusCode != 200 {
-        fmt.Printf("Got status %d from device existence notify\n", resp.StatusCode )
-    } else {
-        fmt.Printf("Notified control floor of device existence; uuid=%s\n", censorUuid( uuid ) )
-    }
+func (self *ControlFloor) notifyWdaStopped( udid string ) {
+    self.baseNotify("wda stop", udid, url.Values{
+        "status": {"wdaStopped"},
+        "udid": {udid},
+    } )
+}
+
+func (self *ControlFloor) notifyWdaStarted( udid string ) {
+    self.baseNotify("wda start", udid, url.Values{
+        "status": {"wdaStarted"},
+        "udid": {udid},
+    } )
 }
 
 func (self *ControlFloor) checkLogin() (bool) {
@@ -187,7 +294,7 @@ func (self *ControlFloor) login() (bool) {
     self.lock.Lock()
     
     user := "first"
-    pass := "e8dfb2789298d64e607fe997470bb88d"
+    pass := self.pass
     
     resp, err := self.client.PostForm( self.base + "/provider/login",
         url.Values{
@@ -201,9 +308,11 @@ func (self *ControlFloor) login() (bool) {
     
     success := false
     if resp.StatusCode != 302 {
-        success = true
+        success = false
+        fmt.Printf("StatusCode from controlfloor login:'%d'\n", resp.StatusCode )
     } else {
         loc, _ := resp.Location()
+        fmt.Printf("Location from redirect of controlfloor login:'%s'\n", loc )
         q := loc.RawQuery
         if q != "fail=1" { success = true }
     }
@@ -266,6 +375,8 @@ func doregister( config *Config ) (string) {
     if existed {
         fmt.Printf("User %s existed so password was renewed\n", username )
     }
+    
+    writeCFConfig( "cf.json", pass )
             
     return pass
 }
