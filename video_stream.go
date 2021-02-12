@@ -18,19 +18,25 @@ import (
 )
 
 type ImageConsumer struct {
-    consumer func( string, []byte )
+    consumer func( string, []byte ) (error)
+    noframesf func()
     udid string
 }
 
-func NewImageConsumer( consumer func( string, []byte ) ) (*ImageConsumer) {
+func NewImageConsumer( consumer func( string, []byte ) (error), noframes func() ) (*ImageConsumer) {
     self := &ImageConsumer{
         consumer: consumer,
+        noframesf: noframes,
     }
     return self
 }
 
-func (self *ImageConsumer) consume( text string, bytes []byte ) {
-    self.consumer( text, bytes )
+func (self *ImageConsumer) consume( text string, bytes []byte ) (error) {
+    return self.consumer( text, bytes )
+}
+
+func (self *ImageConsumer) noframes() {
+    self.noframesf()
 }
 
 type VideoStreamer interface {
@@ -45,6 +51,7 @@ type AppStream struct {
     controlSpec string
     vidSpec string
     udid string
+    controlSocket mangos.Socket
 }
 
 func NewAppStream( stopChan chan bool, controlPort int, vidPort int, udid string ) (*AppStream) {
@@ -60,6 +67,7 @@ func NewAppStream( stopChan chan bool, controlPort int, vidPort int, udid string
 
 func (self *AppStream) setImageConsumer( imgConsumer *ImageConsumer ) {
     self.imgHandler.setImageConsumer( imgConsumer )
+    self.controlSocket.Send([]byte(`{"action": "oneframe"}`))
 }
 
 func (self *AppStream) getControlChan() ( chan int ) {
@@ -105,23 +113,23 @@ func (self *AppStream) openVideo() (mangos.Socket,bool,chan bool) {
 
 func (self *AppStream) mainLoop() {
     go func() {
-        var controlSocket mangos.Socket
+        //var controlSocket mangos.Socket
         var imgSocket     mangos.Socket
         var controlStopChan chan bool
         var vidStopChan     chan bool
         
         //imgHandler := NewImgHandler( self.stopChan, self.udid )
         self.imgHandler.setEnableStream( func() {
-            controlSocket.Send([]byte(`{"action": "start"}`))
+            self.controlSocket.Send([]byte(`{"action": "start"}`))
         } )
         self.imgHandler.setDisableStream( func() {
-            controlSocket.Send([]byte(`{"action": "stop"}`))
+            self.controlSocket.Send([]byte(`{"action": "stop"}`))
         } )
         
         for {
             var done bool
-            if controlSocket == nil {
-                controlSocket,done,controlStopChan = self.openControl()
+            if self.controlSocket == nil {
+                self.controlSocket,done,controlStopChan = self.openControl()
                 if done { break }
             }
             if imgSocket == nil {
@@ -133,10 +141,13 @@ func (self *AppStream) mainLoop() {
             res := self.imgHandler.mainLoop( vidStopChan, controlStopChan )
             if res == 1 { break } // stopChan
             if res == 2 { imgSocket = nil } // imgSocket connection lost
-            if res == 3 { controlSocket = nil } // controlSocket connection lost
+            if res == 3 { self.controlSocket = nil } // controlSocket connection lost
+            if res == 4 { // lost send socket
+                // TODO: Reconnect send socket
+            } 
         }
         
-        if controlSocket != nil { controlSocket.Close() }
+        if self.controlSocket != nil { self.controlSocket.Close() }
         if imgSocket     != nil { imgSocket.Close() }
     }()
 }
@@ -226,9 +237,9 @@ type ImgHandler struct {
     discard     bool
     imgNum      int
     sentSize    bool
-    enableStream func()
+    enableStream  func()
     disableStream func()
-    udid string
+    udid          string
 }
 
 func NewImgHandler( stopChan chan bool, udid string ) ( *ImgHandler ) {
@@ -274,7 +285,10 @@ func ( self *ImgHandler ) processImgMsg() (int) {
         }
     }
     
-    //fmt.Printf("Got incoming frame\n")
+    self.imgNum = self.imgNum + 1
+    if ( self.imgNum % 30 ) == 0 {
+        fmt.Printf("Got incoming frame %d\n", self.imgNum)
+    }
     
     if self.discard && self.sentSize {
         msg.Free()
@@ -287,10 +301,20 @@ func ( self *ImgHandler ) processImgMsg() (int) {
     if msg.Body[0] == '{' {
         endi := strings.Index( string(msg.Body), "}" )
         root, left := uj.Parse( msg.Body )
-        if ( len(msg.Body ) - len( left ) - 1 ) != endi {
+        lenLeft := len( left )
+        if ( len(msg.Body ) - lenLeft - 1 ) != endi {
             fmt.Printf( "size mistmatched what was parsed: %d != %d\n", endi, len( msg.Body ) - len(left) - 1 )
         }
         data = left
+        
+        if lenLeft < 10 {
+            // it's just a text message
+            msg := root.Get("msg").String()
+            if msg == "noframes" {
+                self.imgConsumer.noframes()
+            }
+            return 0
+        }
         
         //ow := root.Get("ow").Int()
         //oh := root.Get("oh").Int()
@@ -311,8 +335,13 @@ func ( self *ImgHandler ) processImgMsg() (int) {
     }
     
     if !self.discard {
-        self.imgConsumer.consume( text, data )
+        err := self.imgConsumer.consume( text, data )
         msg.Free()
+        if err != nil {
+            // might as well begin discarding since we can't send
+            self.discard = true
+            return 3
+        }
     } else {
         msg.Free()
     }
@@ -350,12 +379,20 @@ func ( self *ImgHandler ) mainLoop( vidStopChan chan bool, controlStopChan chan 
                 } 
             default: // this makes the above read from stopChannel non-blocking
         }
-        self.processImgMsg()
+        pres := self.processImgMsg()
+        if pres == 1 {
+            res = 2
+            goto DONE
+        }
+        if pres == 3 { // lost send socket
+            res = 4
+            goto DONE
+        }
         self.imgNum++
     }
-    fmt.Printf("Main loop stop\n")
     
     DONE:
+    fmt.Printf("Main loop stop\n")
     self.disableStream()
     return res
 }

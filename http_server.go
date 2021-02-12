@@ -12,7 +12,7 @@ import (
 
 func coroHttpServer( devTracker *DeviceTracker ) {
     var listen_addr = fmt.Sprintf( "0.0.0.0:%d", devTracker.Config.httpPort )
-    go startServer( devTracker, listen_addr )
+    startServer( devTracker, listen_addr )
 }
 
 func startServer( devTracker *DeviceTracker, listen_addr string ) {
@@ -20,18 +20,10 @@ func startServer( devTracker *DeviceTracker, listen_addr string ) {
         "type": "http_start",
     } ).Debug("HTTP server started")
 
-    connectClosure := func( w http.ResponseWriter, r *http.Request ) {
-        deviceConnect( w, r, devTracker.EventCh )
-    }
-    disconnectClosure := func( w http.ResponseWriter, r *http.Request ) {
-        deviceDisconnect( w, r, devTracker.EventCh )
-    }
     frameClosure := func( w http.ResponseWriter, r *http.Request ) {
         onFrame( w, r, devTracker )
     }
     
-    http.HandleFunc( "/dev_connect", connectClosure )
-    http.HandleFunc( "/dev_disconnect", disconnectClosure )
     http.HandleFunc( "/frame", frameClosure )
     
     err := http.ListenAndServe( listen_addr, nil )

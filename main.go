@@ -3,25 +3,9 @@ package main
 import (
     "flag"
     "os"
-    "sync"
+    //"sync"
     log "github.com/sirupsen/logrus"
 )
-
-func NewDevice( config *Config, devTracker *DeviceTracker, uuid string ) (*Device) {
-    dev := Device{
-        devTracker: devTracker,
-        wdaPort:    devTracker.getPort(),
-        vidPort:   devTracker.getPort(),
-        vidControlPort:   devTracker.getPort(),
-        config:     config,
-        uuid:       uuid,
-        lock:       &sync.Mutex{},
-        process:    make( map[string] *GenericProc ),
-        cf:         devTracker.cf,
-        EventCh:    make( chan DevEvent ),
-    }
-    return &dev
-}
 
 func main() {
     var debug      = flag.Bool(   "debug" , false        , "Use debug log level" )
@@ -46,9 +30,10 @@ func main() {
     
     coroHttpServer( devTracker )
     
-    proc_device_trigger( devTracker )
+    // The devTracker now handles this directly
+    // proc_device_trigger( devTracker )
     
-    devTracker.eventLoop()
+    //devTracker.eventLoop()
 }
 
 func setupLog( debug bool, warn bool ) {

@@ -44,11 +44,8 @@ func cleanup_procs( config *Config ) {
     } )
 
     procMap := map[string]string {
-        "ios_video_stream": config.iosVideoStreamPath,
-        "ios-deploy":       config.iosDeployPath,
+        "iosif":       config.iosIfPath,
         "xcodebuild": "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild",
-        "mobiledevice": "/Users/user/git/ios_remote_provider/bin/mobiledevice",
-        "mobiledevice2": "bin/mobiledevice",
     }
      
 	// Cleanup hanging processes if any

@@ -21,7 +21,12 @@ type ProcOptions struct {
     env           map[string]string
     noRestart     bool
     noWait        bool
-    onStop        func( *Device )
+    onStop        func( interface{} )
+}
+
+type ProcTracker interface {
+    startProc( proc *GenericProc )
+    stopProc( procName string )
 }
 
 type GPMsg struct {
@@ -51,7 +56,7 @@ func restart_proc_generic( dev *Device, name string ) {
     genProc.Restart()
 }
 
-func proc_generic( devTracker *DeviceTracker, dev *Device, opt *ProcOptions ) ( *GenericProc ) {
+func proc_generic( procTracker ProcTracker, wrapper interface{}, opt *ProcOptions ) ( *GenericProc ) {
     controlCh := make( chan GPMsg )
     proc := GenericProc {
         controlCh: controlCh,
@@ -59,17 +64,19 @@ func proc_generic( devTracker *DeviceTracker, dev *Device, opt *ProcOptions ) ( 
     }
         
     var plog *log.Entry
-    if dev != nil {
+    /*if wrapper != nil {
         plog = log.WithFields( log.Fields{
             "proc": opt.procName,
             "uuid": censorUuid( dev.uuid ),
         } )
-        dev.lock.Lock()
-        dev.process[ opt.procName ] = &proc
-        dev.lock.Unlock()
+        
+    }*/
+    plog = log.WithFields( log.Fields{ "proc": opt.procName } )
+    
+    if procTracker != nil {
+        procTracker.startProc( &proc )
     } else {
-        plog = log.WithFields( log.Fields{ "proc": opt.procName } )
-        devTracker.procStart( &proc )
+        panic("procTracker not set")
     }
   
     backoff := Backoff{}
@@ -77,17 +84,25 @@ func proc_generic( devTracker *DeviceTracker, dev *Device, opt *ProcOptions ) ( 
 
     stop := false
     
-    go func() { for {
-        startFields := log.Fields{
-            "type":   "proc_start",
-            "binary": opt.binary,
-        }
-        if opt.startFields != nil {
-            for k, v := range opt.startFields {
-                startFields[k] = v
+    if opt.binary == "" {
+        fmt.Printf("Binary not set\n")
+    }
+    
+    startFields := log.Fields{
+        "type":   "proc_start",
+        "binary": opt.binary,
+    }
+    if opt.startFields != nil {
+        for k, v := range opt.startFields {
+            if v == nil {
+                fmt.Printf("%s not set\n", k )
             }
+            fmt.Printf("%s = %s\n", k, v )
+            startFields[k] = v
         }
-        
+    }
+    
+    go func() { for {
         plog.WithFields( startFields ).Info("Process start - " + opt.procName)
 
         cmd := gocmd.NewCmdOptions( gocmd.Options{ Streaming: true }, opt.binary, opt.args... )
@@ -186,7 +201,7 @@ func proc_generic( devTracker *DeviceTracker, dev *Device, opt *ProcOptions ) ( 
         plog.WithFields( log.Fields{ "type": "proc_end" } ).Warn("Process end - "+ opt.procName)
         
         if opt.onStop != nil {
-            opt.onStop( dev )
+            opt.onStop( wrapper )
         }
         
         if opt.noRestart { 

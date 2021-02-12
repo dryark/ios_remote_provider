@@ -172,7 +172,27 @@ func ( self *ControlFloor ) openWebsocket() {
                                 dev.clickAt( x, y )
                             }
                         } ()
-                    } else if mType == "startStream" {
+                    } else if mType == "home" {
+                        udid := root.Get("udid").String()
+                        go func() {
+                            dev := self.DevTracker.getDevice( udid )
+                            if dev != nil {
+                                dev.home()
+                            }
+                        } ()
+                    }else if mType == "swipe" {
+                        udid := root.Get("udid").String()
+                        x1 := root.Get("x1").Int()
+                        y1 := root.Get("y1").Int()
+                        x2 := root.Get("x2").Int()
+                        y2 := root.Get("y2").Int()
+                        go func() {
+                            dev := self.DevTracker.getDevice( udid )
+                            if dev != nil {
+                                dev.swipe( x1, y1, x2, y2 )
+                            }
+                        } ()
+                    }else if mType == "startStream" {
                         udid := root.Get("udid").String()
                         fmt.Printf("Got request to start video stream for %s\n", udid )
                         go func() { self.startStream( udid ) }()

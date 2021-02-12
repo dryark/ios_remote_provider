@@ -1,6 +1,8 @@
 package main
 
 import (
+    "fmt"
+    "strconv"
     "sync"
     log "github.com/sirupsen/logrus"
 )
@@ -13,11 +15,11 @@ type Event struct {
 type DeviceTracker struct {
     Config     *Config
     DevMap     map [string] *Device
-    EventCh    chan Event
     localPorts []int
     process    map[string] *GenericProc
     lock       *sync.Mutex
     cf         *ControlFloor
+    bridge  BridgeRoot
 }
 
 func NewDeviceTracker( config *Config ) (*DeviceTracker) {
@@ -25,21 +27,33 @@ func NewDeviceTracker( config *Config ) (*DeviceTracker) {
         process: make( map[string] *GenericProc ),
         lock: &sync.Mutex{},
         DevMap: make( map [string] *Device ),
-        EventCh: make( chan Event ),
+        //EventCh: make( chan Event ),
         Config: config,
         localPorts: []int{
-            8102, 8103, 8104, 8105, 8106, 8107, 8108, 8109,
+            8102, 8103, 8104, 8105, 8106, 8107, 8108, 8109, 8110, 8111, 8112, 8113, 8114, 8115, 8116,
         },
-        cf: NewControlFloor( config ),
+        cf: NewControlFloor( config ),        
     }
+    self.bridge = NewIIFBridge(
+        func( dev BridgeDev ) ProcTracker { return self.onDeviceConnect1( dev ) },
+        func( dev BridgeDev ) { self.onDeviceDisconnect1( dev ) },
+        config.iosIfPath,
+        self,
+    )
     self.cf.DevTracker = self
         
     return self
 }
 
-func (self *DeviceTracker) procStart( proc *GenericProc ) {
+func (self *DeviceTracker) startProc( proc *GenericProc ) {
     self.lock.Lock()
     self.process[ proc.name ] = proc
+    self.lock.Unlock()
+}
+
+func ( self *DeviceTracker ) stopProc( procName string ) {
+    self.lock.Lock()
+    delete( self.process, procName )
     self.lock.Unlock()
 }
 
@@ -55,35 +69,43 @@ func (self *DeviceTracker) getDevice( udid string ) (*Device) {
     return self.DevMap[ udid ]
 }
 
-func (self *DeviceTracker) eventLoop() {
-    for {
-        select {
-        case event := <- self.EventCh:
-            udid   := event.uuid
-            dev    := self.DevMap[ udid ]
-            action := event.action
-            
-            if action == 0 { // device connect
-                devConf := self.Config.devs[ udid ]
-                
-                self.cf.notifyDeviceExists( udid, devConf.width, devConf.height, devConf.clickWidth, devConf.clickHeight )
-                dev = self.onDeviceConnect( udid )
-                self.cf.notifyDeviceInfo( dev )
-                dev.startEventLoop()
-                dev.startProcs()
-            } else if action == 1 { // device disconnect
-                self.onDeviceDisconnect( dev )
-                dev.stopEventLoop()
-                dev.endProcs()
-            } else if action == 2 { // shutdown
-                break
-            }
-        }
-    }
+func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
+    udid := bdev.getUdid()
+    fmt.Printf("udid: %s\n", udid)
+    //dev := self.DevMap[ udid ]
+    
+    //devConf := self.Config.devs[ udid ]
+    mgInfo := bdev.gestalt( []string{
+        "main-screen-width",
+        "main-screen-height",
+        "main-screen-scale",
+    } )
+    
+    width, _ := strconv.Atoi( mgInfo["main-screen-width"] )
+    height, _ := strconv.Atoi( mgInfo["main-screen-height"] )
+    scale, _ := strconv.Atoi( mgInfo["main-screen-scale"] )
+                    
+    self.cf.notifyDeviceExists( udid, width, height, width/scale, height/scale )
+    dev := self.onDeviceConnect( udid, bdev )
+    self.cf.notifyDeviceInfo( dev )
+    dev.startEventLoop()
+    dev.openBackupStream()
+    dev.startBackupFrameProvider()
+    bdev.setProcTracker( self )
+    dev.startProcs()
+    return dev
+}
+
+func (self *DeviceTracker) onDeviceDisconnect1( bdev BridgeDev ) {
+    udid := bdev.getUdid()
+    dev := self.DevMap[ udid ]
+    
+    self.onDeviceDisconnect( dev )
+    dev.stopEventLoop()
+    dev.endProcs()
 }
 
 func (self *DeviceTracker) shutdown() {
-    go func() { self.EventCh <- Event{ action: 2 } }()
     for _,proc := range self.process {
         log.WithFields( log.Fields{
             "type": "shutdown_proc",
@@ -106,15 +128,15 @@ func (self *DeviceTracker) shutdown() {
     }
 }
 
-func (self *DeviceTracker) onDeviceConnect( uuid string ) (*Device){
+func (self *DeviceTracker) onDeviceConnect( uuid string, bdev BridgeDev ) (*Device){
     dev := self.DevMap[ uuid ]
     if dev != nil {
         dev.connected = true
         return dev
     }
-    dev = NewDevice( self.Config, self, uuid )
+    dev = NewDevice( self.Config, self, uuid, bdev )
     
-    devInfo := getAllDeviceInfo( self.Config, uuid )
+    devInfo := getAllDeviceInfo( bdev )
     log.WithFields( log.Fields{
         "type":       "devInfo",
         "uuid":       censorUuid( uuid ),

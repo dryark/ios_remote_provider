@@ -6,7 +6,7 @@ import (
     "io/ioutil"
     "net/http"
     "os"
-    "os/exec"
+    //"os/exec"
     "strings"
     "path/filepath"
     "regexp"
@@ -45,70 +45,36 @@ func NewWDA( config *Config, devTracker *DeviceTracker, dev *Device, localhostPo
 }
 
 func (self *WDA) start() {
-    go func() {
-        spec := fmt.Sprintf("%d:%d", self.localhostPort, self.onDevicePort )
+    pairs := []TunPair{
+        TunPair{ from: self.localhostPort, to: self.onDevicePort },
+    }
+    self.dev.bridge.tunnel( pairs )
         
-        log.WithFields( log.Fields{
-            "bin": self.config.mobiledevicePath,
-            "uuid": censorUuid( self.uuid ),
-            "spec": spec,
-        } ).Info("Process start tunnel")
-        
-        c := exec.Command( self.config.mobiledevicePath, "tunnel", "-u", self.uuid, spec )
-        
-        c.Stdout = os.Stdout
-        c.Stderr = os.Stderr
-        
-        /*err := */c.Run()
-        fmt.Printf("mobileDevice tunnel failure\n")
-    }()
-    
     xctestrunFile := findXctestrun("./bin/wda")
     if xctestrunFile == "" {
         log.Fatal("Could not find WebDriverAgent.xcodeproj or xctestrun of sufficient version")
         return
     }
-    o := ProcOptions {
-        procName: "wda",
-        binary: "xcodebuild",
-        startDir: "./bin/wda",
-        args: []string{
-            "test-without-building",
-            "-xctestrun", xctestrunFile,
-            "-destination", "id="+self.uuid,
-        },
-        startFields: log.Fields{
-            "testrun": xctestrunFile,
-        },
-        stdoutHandler: func( line string, plog *log.Entry ) {
-            //if debug {
-            //    fmt.Printf("[WDA] %s\n", lineStr)
-            //}
-            if strings.HasPrefix(line, "Test Case '-[UITestingUITests testRunner]' started") {
-                plog.Println("[WDA] successfully started")
-                self.dev.EventCh <- DevEvent{
-                    action: 1,
-                }
+    
+    self.dev.bridge.wda(
+        xctestrunFile,
+        self.localhostPort,
+        func() { // onStart
+            log.WithFields( log.Fields{
+                "type": "wda_start",
+                "uuid":  censorUuid(self.uuid),
+                "port": self.localhostPort,
+            } ).Info("[WDA] successfully started")
+            self.dev.EventCh <- DevEvent{
+                action: 1,
             }
-            if strings.Contains( line, "configuration is unsupported" ) {
-                plog.Println( line )
-            }
-            //plog.Println( line )
         },
-        stderrHandler: func( line string, plog *log.Entry ) {
-            if strings.Contains( line, "configuration is unsupported" ) {
-                plog.Println( line )
-            }
-            //plog.Println( line )
-        },
-        onStop: func( *Device ) {
+        func(interface{}) { // onStop
             self.dev.EventCh <- DevEvent{
                 action: 2,
             }
         },
-    }
-    
-    self.wdaProc = proc_generic( self.devTracker, self.dev, &o )
+    )
 }
 
 func (self *WDA) stop() {
@@ -254,7 +220,14 @@ func (self *WDA) clickAt( x int, y int ) (string) {
     return res    
 }
 
-func ( self *WDA ) swipe( sid string, x1 int, y1 int, x2 int, y2 int ) ( string ) {
+func (self *WDA) home() (string) {
+    resp, _ := http.Post( self.base + "/wda/homescreen", "application/json", strings.NewReader( "{}" ) )
+    res := resp_to_str( resp )
+    log.Info( "response " + res )
+    return res    
+}
+
+func ( self *WDA ) swipe( x1 int, y1 int, x2 int, y2 int ) ( string ) {
     log.Info( "Swiping:", x1, y1, x2, y2 )
     json := fmt.Sprintf( `{
     "actions": [

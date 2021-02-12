@@ -2,12 +2,15 @@ package main
 
 import (
     "fmt"
-    "os"
+    //"os"
     "sync"
     "time"
     log "github.com/sirupsen/logrus"
     ws "github.com/gorilla/websocket"
     //gocmd "github.com/go-cmd/cmd"
+    "go.nanomsg.org/mangos/v3"
+	//nanoPull "go.nanomsg.org/mangos/v3/protocol/pull"
+	nanoReq  "go.nanomsg.org/mangos/v3/protocol/req"
 )
 
 type Device struct {
@@ -26,6 +29,8 @@ type Device struct {
     owner       string
     connected   bool
     EventCh     chan DevEvent
+    BackupCh    chan BackupEvent
+    backupSock  mangos.Socket
     wda         *WDA
     devTracker  *DeviceTracker
     config      *Config
@@ -33,6 +38,42 @@ type Device struct {
     info        map[string] string
     vidStreamer VideoStreamer
     appStreamStopChan chan bool
+    vidOut      *ws.Conn
+    bridge      BridgeDev
+}
+
+func NewDevice( config *Config, devTracker *DeviceTracker, uuid string, bdev BridgeDev ) (*Device) {
+    dev := Device{
+        devTracker: devTracker,
+        wdaPort:    devTracker.getPort(),
+        vidPort:   devTracker.getPort(),
+        vidControlPort:   devTracker.getPort(),
+        config:     config,
+        uuid:       uuid,
+        lock:       &sync.Mutex{},
+        process:    make( map[string] *GenericProc ),
+        cf:         devTracker.cf,
+        EventCh:    make( chan DevEvent ),
+        BackupCh:   make( chan BackupEvent ),
+        bridge:     bdev,
+    }
+    return &dev
+}
+
+func ( self *Device ) startProc( proc *GenericProc ) {
+    self.lock.Lock()
+    self.process[ proc.name ] = proc
+    self.lock.Unlock()
+}
+
+func ( self *Device ) stopProc( procName string ) {
+    self.lock.Lock()
+    delete( self.process, procName )
+    self.lock.Unlock()
+}
+
+type BackupEvent struct {
+    action int
 }
 
 type DevEvent struct {
@@ -43,6 +84,8 @@ type DevEvent struct {
 
 func (self *Device) shutdown() {
     go func() { self.EventCh <- DevEvent{ action: 0 } }()
+    go func() { self.BackupCh <- BackupEvent{ action: 2 } }()
+    
     for _,proc := range self.process {
         log.WithFields( log.Fields{
             "type": "shutdown_dev_proc",
@@ -77,6 +120,60 @@ func (self *Device) startEventLoop() {
     }()
 }
 
+func (self *Device) startBackupFrameProvider() {
+    go func() {
+        sending := false
+        for {
+            time.Sleep( time.Millisecond * 200 ) // 5 times a second
+            select {
+            case ev := <- self.BackupCh:
+                action := ev.action
+                if action == 0 { // begin sending backup frames
+                    sending = true
+                } else if action == 1 {
+                    sending = false
+                } else if action == 2 {
+                    break
+                }        
+            }
+            if sending {
+                self.sendBackupFrame()
+            }
+        }
+    }()
+}
+
+func (self *Device) openBackupStream() {
+    var err error
+    
+    spec := "tcp://127.0.0.1:8912"
+    
+    if self.backupSock, err = nanoReq.NewSocket(); err != nil {
+        log.WithFields( log.Fields{
+            "type":     "err_socket_new",
+            "zmq_spec": spec,
+            "err":      err,
+        } ).Info("Socket new error")
+        return
+    }
+    
+    if err = self.backupSock.Dial( spec ); err != nil {
+        log.WithFields( log.Fields{
+            "type": "err_socket_dial",
+            "spec": spec,
+            "err":  err,
+        } ).Info("Socket dial error")
+        return
+    }
+}
+
+func (self *Device) sendBackupFrame() {
+    self.backupSock.Send([]byte("img"))
+    
+    msg, _ := self.backupSock.RecvMsg()
+    self.vidOut.WriteMessage( ws.BinaryMessage, msg.Body )
+}
+
 func (self *Device) stopEventLoop() {
     self.EventCh <- DevEvent{
         action: 0,
@@ -94,19 +191,41 @@ func (self *Device) startProcs() {
     self.vidStreamer.mainLoop()
 }
 
-type ImgForwarder struct {
-}
-
-func (*ImgForwarder) consume( int ) {
-    
-}
-
 func (self *Device) startStream( conn *ws.Conn ) {
     controlChan := self.vidStreamer.getControlChan()
     
-    imgConsumer := NewImageConsumer( func( text string, data []byte ) {
-        fmt.Printf("Image consume\n")
-        conn.WriteMessage( ws.BinaryMessage, data )
+    // Necessary so that writes to the socket fail when the connection is lost
+    go func() {
+        for {
+            if _, _, err := conn.NextReader(); err != nil {
+                conn.Close()
+                break
+            }
+        }
+    }()
+    
+    self.vidOut = conn
+    
+    backupActive := false
+    
+    imgConsumer := NewImageConsumer( func( text string, data []byte ) (error) {
+        //fmt.Printf("Image consume\n")
+        if backupActive {
+            self.BackupCh <- BackupEvent{
+                action: 1,
+            }
+            backupActive = false
+            conn.WriteMessage( ws.TextMessage, []byte( fmt.Sprintf("{\"action\":\"normalFrame\"}") ) )
+        }
+        return conn.WriteMessage( ws.BinaryMessage, data )
+    }, func() {
+        // there are no frames to send
+        backupActive = true
+        conn.WriteMessage( ws.TextMessage, []byte( fmt.Sprintf("{\"action\":\"backupFrame\"}") ) )
+    
+        self.BackupCh <- BackupEvent{
+            action: 0,
+        }
     } )
     
     self.vidStreamer.setImageConsumer( imgConsumer )
@@ -116,32 +235,11 @@ func (self *Device) startStream( conn *ws.Conn ) {
 }
 
 func (self *Device) forwardVidPorts( udid string ) {
-    curDir, _ := os.Getwd()
-    
-    o := ProcOptions {
-        procName: "vidPortForward-"+udid,
-        binary: curDir + "/" + self.config.mobiledevicePath,
-        startFields: log.Fields{
-            "vidPort": self.vidPort,
-            "controlPort": self.vidControlPort,
-            "udid": censorUuid( udid ),
-        },
-        args: []string{
-            "tunnel",
-            "-u", udid,
-            fmt.Sprintf("%d:%d,%d:%d", self.vidPort, 8352, self.vidControlPort, 8351 ),
-        },
-    }
-    
-    proc_generic( self.devTracker, self, &o )
-    /*args := []string {
-        "tunnel",
-        "-u", udid,
-        fmt.Sprintf("%d:%d,%d:%d", self.vidPort, 8352, self.vidControlPort, 8351 ),
-    }
-    cmd := gocmd.NewCmdOptions( gocmd.Options{ Streaming: true }, self.config.mobiledevicePath, args... )
-    cmd.Start()*/
-    time.Sleep( time.Second * 3 )
+    self.bridge.tunnel( []TunPair{
+        TunPair{ from: self.vidPort, to: 8352 },
+        TunPair{ from: self.vidControlPort, to: 8351 },
+    } )
+    //curDir, _ := os.Getwd()
 } 
 
 func (self *Device) endProcs() {
@@ -164,4 +262,12 @@ func (self *Device) onFirstFrame( event *DevEvent ) {
 
 func (self *Device) clickAt( x int, y int ) {
     self.wda.clickAt( x, y )
+}
+
+func (self *Device) home() {
+    self.wda.home()
+}
+
+func (self *Device) swipe( x1 int, y1 int, x2 int, y2 int ) {
+    self.wda.swipe( x1, y1, x2, y2 )
 }

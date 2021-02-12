@@ -10,16 +10,10 @@ import (
 
 type CDevice struct {
     udid string
-    width int
-    height int
-    clickWidth int
-    clickHeight int
 }
 
 type Config struct {
-    iosDeployPath      string
-    mobiledevicePath   string
-    iosVideoStreamPath string
+    iosIfPath      string
     httpPort           int
     cfHost             string
     cfUsername         string
@@ -34,19 +28,11 @@ func NewConfig( configPath string ) (*Config) {
     binPaths := root.Get("bin_paths")
     if binPaths == nil {
     }
-    iosDeployNode := binPaths.Get("ios-deploy")
-    if iosDeployNode == nil {
+    iosifNode := binPaths.Get("iosif")
+    if iosifNode == nil {
     }
-    config.iosDeployPath = iosDeployNode.String()
-    mobiledeviceNode := binPaths.Get("mobiledevice")
-    if mobiledeviceNode == nil {
-    }
-    config.mobiledevicePath = mobiledeviceNode.String()
-    ivsNode := binPaths.Get("ios_video_stream")
-    if ivsNode == nil {
-    }
-    config.iosVideoStreamPath = ivsNode.String()
-    
+    config.iosIfPath = iosifNode.String()
+        
     portNode := root.Get("port")
     if root == nil {
     }
@@ -73,21 +59,16 @@ func readDevs( root *uj.JNode ) ( map[string]CDevice ) {
     devs := make( map[string]CDevice )
     
     devsNode := root.Get("devices")
-    devsNode.ForEach( func( devNode *uj.JNode ) {
-        udid := devNode.Get("udid").String()
-        width := devNode.Get("mainScreenWidth").Int()
-        height := devNode.Get("mainScreenHeight").Int()
-        scale := devNode.Get("mainScreenScale").Int()
-            
-        dev := CDevice{
-            udid: udid,
-            width: width,
-            height: height,
-            clickWidth: (width/scale),
-            clickHeight: (height/scale),
-        }
-        devs[ udid ] = dev
-    } )
+    if devsNode != nil {
+        devsNode.ForEach( func( devNode *uj.JNode ) {
+            udid := devNode.Get("udid").String()
+                        
+            dev := CDevice{
+                udid: udid,
+            }
+            devs[ udid ] = dev
+        } )
+    }
     return devs
 }
 
