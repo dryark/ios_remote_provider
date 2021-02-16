@@ -11,12 +11,13 @@ func main() {
     var debug      = flag.Bool(   "debug" , false        , "Use debug log level" )
     var warn       = flag.Bool(   "warn"  , false        , "Use warn log level" )
     var configPath = flag.String( "config", "config.json", "Config file path" )
+    var defaultsPath = flag.String( "defaults", "default.json", "Defaults file path" )
     var register   = flag.Bool(   "register", false      , "Register against control floor" )
     flag.Parse()
     
     setupLog( *debug, *warn )
     
-    config := NewConfig( *configPath )
+    config := NewConfig( *configPath, *defaultsPath )
     
     if *register {
         doregister( config )

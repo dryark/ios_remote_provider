@@ -1,0 +1,2 @@
+openstep_parser>=1.5.1
+docopt

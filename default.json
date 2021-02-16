@@ -1,0 +1,23 @@
+{
+    bin_paths: {
+        iosif: "bin/iosif"
+    }
+    repos: {
+        wda: "https://github.com/appium/WebDriverAgent.git"
+        ujsonin: "https://github.com/nanoscopic/ujsonin.git"
+        pbxproj: "https://github.com/kronenthaler/mod-pbxproj"
+        iosif: "https://github.com/nanoscopic/iosif.git"
+    }
+    wda: {
+        lib: {
+            buildStyle: "Automatic" // or "Manual"
+            provisioningProfile: "" // always blank
+        }
+        runner: {
+            buildStyle: "Automatic" // or "Manual"
+            provisioningProfile: "" // specify when buildStyle is Manual
+        }
+    }
+    wdaXctestRunFolder: "repos/WebDriverAgent/build/Build/Products"
+    port: 8027
+}
