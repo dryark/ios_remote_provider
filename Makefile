@@ -31,7 +31,7 @@ repos/iosif:
 bin/gojq: repos/ujsonin
 	make -c repos/ujsonin gojq
 
-config.mk: config.json
+config.mk: config.json bin/gojq
 	@./bin/gojq makevars -prefix config -file config.json -defaults default.json > config.mk
 
 clonewda: repos/WebDriverAgent
