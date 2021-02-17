@@ -34,6 +34,29 @@ repos/iosif:
 repos/vidapp:
 	git clone $(config_repos_vidapp) repos/vidapp
 
+vidtest_unsigned.xcarchive:
+	xcodebuild -project repos/vidapp/vidtest/vidtest.xcodeproj -scheme vidtest archive -archivePath ./vidtest.xcarchive CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+
+vidtest.xcarchive: repos/vidapp
+	@./bin/gojq overlay -file1 default.json -file2 config.json -json > muxed.json
+	./python/configure_vidtest.py muxed.json
+	xcodebuild -project repos/vidapp/vidtest/vidtest.xcodeproj -scheme vidtest archive -archivePath ./vidtest.xcarchive
+
+vidtest.ipa: vidtest.xcarchive repos/vidapp
+	plutil -replace teamID -string $(config_vidtest_devTeamOu) ./repos/vidapp/vidtest/ExportOptions.plist
+	@if [-e vidtest.ipa]; them rm vidtest.ipa; fi;
+	xcodebuild -exportArchive -archivePath ./vidtest.xcarchive -exportOptionsPlist ./repos/vidapp/vidtest/ExportOptions.plist -exportPath vidtest.ipa
+
+installvidapp: vidtest.xcarchive
+	ios-deploy -b vidtest.xcarchive/Products/Applications/vidtest.app
+
+vidtest_unsigned.ipa:
+	@if [ -e tmp ]; then rm -rf tmp; fi;
+	mkdir tmp
+	mkdir tmp/Payload
+	ln -s ../../vidtest.xcarchive/Products/Applications/vidtest.app tmp/Payload/vidtest.app
+	cd tmp && zip -r ../vidtest.ipa Payload
+
 bin/gojq: repos/ujsonin
 	make -C repos/ujsonin gojq
 

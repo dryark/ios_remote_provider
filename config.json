@@ -23,5 +23,9 @@
             buildStyle: "Automatic" // or "Manual"
             provisioningProfile: "" // specify when buildStyle is Manual
         }
+    },
+    vidtest: {
+        devTeamOu: "[your dev team ou]"
+        bundleIdPrefix: "com.dryark"
     }
 }

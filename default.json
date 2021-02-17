@@ -18,7 +18,17 @@
             buildStyle: "Automatic" // or "Manual"
             provisioningProfile: "" // specify when buildStyle is Manual
         }
-    }
+    },
+    vidtest: {
+        main: {
+            buildStyle: "Automatic" // or "Manual"
+            provisioningProfile: ""
+        },
+        extension: {
+            buildStyle: "Automatic" // or "Manual"
+            provisioningProfile: ""
+        }
+    },
     wdaXctestRunFolder: "repos/WebDriverAgent/build/Build/Products"
     port: 8027
 }
