@@ -44,14 +44,23 @@ vidtest.xcarchive: repos/vidapp
 
 vidtest.ipa: vidtest.xcarchive repos/vidapp
 	plutil -replace teamID -string $(config_vidtest_devTeamOu) ./repos/vidapp/vidtest/ExportOptions.plist
-	@if [-e vidtest.ipa]; them rm vidtest.ipa; fi;
+	@if [ -e vidtest.ipa ]; then rm vidtest.ipa; fi
 	xcodebuild -exportArchive -archivePath ./vidtest.xcarchive -exportOptionsPlist ./repos/vidapp/vidtest/ExportOptions.plist -exportPath vidtest.ipa
+
+vidtest.ipa/vidtest.ipa_x: vidtest.ipa
+	mkdir vidtest.ipa/vidtest.ipa_x
+	unzip vidtest.ipa/vidtest.ipa -d vidtest.ipa/vidtest.ipa_x
+	find vidtest.ipa/vidtest.ipa_x | grep provision | xargs rm
+	find vidtest.ipa/vidtest.ipa_x | grep _CodeSignature$$ | xargs rm -rf
+
+vidtest_clean.ipa: vidtest.ipa/vidtest.ipa_x
+	cd vidtest.ipa/vidtest.ipa_x && zip -r ../../vidtest_clean.ipa Payload
 
 installvidapp: vidtest.xcarchive
 	ios-deploy -b vidtest.xcarchive/Products/Applications/vidtest.app
 
 vidtest_unsigned.ipa:
-	@if [ -e tmp ]; then rm -rf tmp; fi;
+	@if [ -e tmp ]; then rm -rf tmp; fi
 	mkdir tmp
 	mkdir tmp/Payload
 	ln -s ../../vidtest.xcarchive/Products/Applications/vidtest.app tmp/Payload/vidtest.app
