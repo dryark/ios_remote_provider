@@ -23,7 +23,7 @@ repos/WebDriverAgent:
 	git clone $(config_repos_wda) repos/WebDriverAgent
 
 repos/ujsonin:
-	git clone $(config_repos_ujsonin) repos/jsonin
+	git clone https://github.com/nanoscopic/ujsonin.git repos/jsonin
 
 bin/iosif: repos/iosif
 	make -C repos/iosif
