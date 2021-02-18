@@ -28,7 +28,7 @@ func common( cmd *uc.Cmd ) *Config {
     if configPath == "" { configPath = "config.json" }
     
     defaultsPath := cmd.Get("-defaults").String()
-    if defaultsPath == "" { defaultsPath = "defauls.json" }
+    if defaultsPath == "" { defaultsPath = "default.json" }
     
     setupLog( debug, warn )
     
@@ -37,26 +37,7 @@ func common( cmd *uc.Cmd ) *Config {
 
 func runCleanup( *uc.Cmd ) {
     config := NewConfig( "config.json", "default.json" )
-    cleanup_procs( config )
-    
-    /*out, _ := exec.Command( "ps", "-eo", "pid,args" ).Output()
-    lines := strings.Split( string(out), "\n" )
-    for _,line := range lines {
-        if line == "" { continue }
-        
-        i := 0
-        for ; i<len(line) ; i++ {
-            if line[i] != ' ' { break }
-        }
-        line := line[i:]
-        
-        parts := strings.Split( line, " " )
-        if strings.Contains( parts[1], "iosif" ) {
-            fmt.Printf("line:%s %s\n", parts[0], parts[1] )
-        }
-    }*/
-    
-    //fmt.Println( string(out) )
+    cleanup_procs( config )    
 }
 
 func runRegister( cmd *uc.Cmd ) {
