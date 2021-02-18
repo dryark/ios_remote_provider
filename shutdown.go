@@ -1,10 +1,13 @@
 package main
 
 import (
-	"fmt"
+	  //"fmt"
     "os"
+    "os/exec"
     "os/signal"
     "syscall"
+    "strings"
+    "strconv"
     "time"
     log "github.com/sirupsen/logrus"
     si "github.com/elastic/go-sysinfo"
@@ -38,6 +41,35 @@ func coro_sigterm( config *Config, devTracker *DeviceTracker ) {
     }()
 }
 
+type Aproc struct {
+    pid int
+    cmd string
+}
+
+func get_procs() []Aproc {
+    out, _ := exec.Command( "ps", "-eo", "pid,args" ).Output()
+    lines := strings.Split( string(out), "\n" )
+    
+    procs := []Aproc{}
+    for _,line := range lines {
+        if line == "" { continue }
+        
+        i := 0
+        for ; i<len(line) ; i++ {
+            if line[i] != ' ' { break }
+        }
+        line := line[i:]
+        
+        parts := strings.Split( line, " " )
+        //if strings.Contains( parts[1], "iosif" ) {
+        //    fmt.Printf("line:%s %s\n", parts[0], parts[1] )
+        //}
+        pid, _ := strconv.Atoi( parts[0] )
+        procs = append( procs, Aproc{ pid: pid, cmd: parts[1] } )
+    }
+    return procs
+}
+
 func cleanup_procs( config *Config ) {
     plog := log.WithFields( log.Fields{
         "type": "proc_cleanup",
@@ -48,24 +80,14 @@ func cleanup_procs( config *Config ) {
         "xcodebuild": "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild",
     }
      
-	// Cleanup hanging processes if any
-    procs, listErr := si.Processes()
-    if listErr != nil {
-    	fmt.Printf( "listErr:%s\n", listErr )
-    	os.Exit(1)
-    }
+	  procs := get_procs()
     
     var hangingPids []int
     
-    for _, proc := range procs {
-    	info, infoErr := proc.Info()
-    	if infoErr != nil { continue }
-    	
-        cmd := info.Args
-        
+    for _,proc := range procs {
         for k,v := range procMap {
-            if cmd[0] == v {
-                pid := proc.PID()
+            if proc.cmd == v {
+                pid := proc.pid //proc.PID()
                 plog.WithFields( log.Fields{
                     "proc": k,
                     "pid":  pid,
