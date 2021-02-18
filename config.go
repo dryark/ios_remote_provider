@@ -1,8 +1,10 @@
 package main
 
 import (
+    "crypto/tls"
     "fmt"
     "io/ioutil"
+    "net/http"
     "os"
     uj "github.com/nanoscopic/ujsonin/mod"
     log "github.com/sirupsen/logrus"
@@ -13,12 +15,39 @@ type CDevice struct {
 }
 
 type Config struct {
-    iosIfPath      string
-    httpPort           int
-    cfHost             string
-    cfUsername         string
-    devs               map [string] CDevice
-    xcPath             string
+    iosIfPath  string
+    httpPort   int
+    cfHost     string
+    cfUsername string
+    devs       map [string] CDevice
+    xcPath     string
+    https      bool
+    selfSigned bool
+}
+
+func GetStr( root *uj.JNode, path string ) string {
+    node := root.Get( path )
+    if node == nil {
+        fmt.Fprintf( os.Stderr, "%s is not set in either config.json or default.json" )
+        os.Exit(1)
+    }
+    return node.String()
+}
+func GetBool( root *uj.JNode, path string ) bool {
+    node := root.Get( path )
+    if node == nil {
+        fmt.Fprintf( os.Stderr, "%s is not set in either config.json or default.json" )
+        os.Exit(1)
+    }
+    return node.Bool()
+}
+func GetInt( root *uj.JNode, path string ) int {
+    node := root.Get( path )
+    if node == nil {
+        fmt.Fprintf( os.Stderr, "%s is not set in either config.json or default.json" )
+        os.Exit(1)
+    }
+    return node.Int()
 }
 
 func NewConfig( configPath string, defaultsPath string ) (*Config) {
@@ -26,50 +55,22 @@ func NewConfig( configPath string, defaultsPath string ) (*Config) {
     
     root := loadConfig( configPath, defaultsPath )
     
-    binPaths := root.Get("bin_paths")
-    if binPaths == nil {
-        fmt.Fprintf(os.Stderr,"bin_paths is not set in config.json")
-        os.Exit(1)
-    }
-    iosifNode := binPaths.Get("iosif")
-    if iosifNode == nil {
-        fmt.Fprintf(os.Stderr,"iosif is not set in config.json")
-        os.Exit(1)
-    }
-    config.iosIfPath = iosifNode.String()
-        
-    portNode := root.Get("port")
-    if root == nil {
-        fmt.Fprintf(os.Stderr,"port is not set in config.json")
-        os.Exit(1)
-    }
-    config.httpPort = portNode.Int()
+    config.iosIfPath  = GetStr(  root, "bin_paths.iosif" )
+    config.httpPort  = GetInt(  root, "port" )
+    config.cfHost     = GetStr(  root, "controlfloor.host" )
+    config.cfUsername = GetStr(  root, "controlfloor.username" )
+    config.xcPath     = GetStr(  root, "wdaXctestRunFolder" )
+    config.https      = GetBool( root, "controlfloor.https" )
+    config.selfSigned = GetBool( root, "controlfloor.selfSigned" )
     
-    cfNode := root.Get("controlfloor")
-    if cfNode == nil {
-        fmt.Fprintf(os.Stderr,"controlfloor is not set in config.json")
-        os.Exit(1)
-    }
-    cfHostNode := cfNode.Get("host")
-    if cfHostNode == nil {
-        fmt.Fprintf(os.Stderr,"host is not set in config.json")
-        os.Exit(1)
-    }
-    config.cfHost = cfHostNode.String()
-    
-    cfIdNode := cfNode.Get("username")
-    if cfIdNode == nil {
-        fmt.Fprintf(os.Stderr,"username is not set in config.json")
-        os.Exit(1)
-    }
-    config.cfUsername = cfIdNode.String()
-    
-    xcNode := root.Get("wdaXctestRunFolder")
-    if xcNode == nil {
-        fmt.Fprintf(os.Stderr,"wdaXctestRunFolder is not set in config.json")
-        os.Exit(1)
-    }
-    config.xcPath = xcNode.String()
+    if config.https {
+        if config.selfSigned {
+            http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{
+              InsecureSkipVerify: true,
+            }
+            //http.DefaultTransport.(*http.Transport).ForceAttemptHTTP2 = false
+        }
+    } 
     
     config.devs = readDevs( root )
     
@@ -107,8 +108,8 @@ func loadConfig( configPath string, defaultsPath string ) (*uj.JNode) {
         case mode.IsDir(): defaultsFile = fmt.Sprintf("%s/default.json", defaultsPath)
     }
     content1, err1 := ioutil.ReadFile( defaultsFile )
-	if err1 != nil { log.Fatal( err1 ) }
-	
+    if err1 != nil { log.Fatal( err1 ) }
+  
     defaults, _ := uj.Parse( content1 )
     
     fh, serr := os.Stat( configPath )
@@ -124,12 +125,12 @@ func loadConfig( configPath string, defaultsPath string ) (*uj.JNode) {
         case mode.IsDir(): configFile = fmt.Sprintf("%s/config.json", configPath)
     }
     content, err := ioutil.ReadFile( configFile )
-	if err != nil { log.Fatal( err ) }
-	
+    if err != nil { log.Fatal( err ) }
+  
     root, _ := uj.Parse( content )
     
     defaults.Overlay( root )
-    defaults.Dump()
+    //defaults.Dump()
     
     return defaults
 }

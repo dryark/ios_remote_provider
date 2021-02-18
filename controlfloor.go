@@ -2,6 +2,7 @@ package main
 
 import (
     "bufio"
+    "crypto/tls"
     "fmt"
     "io/ioutil"
     "net/http"
@@ -27,6 +28,7 @@ type ControlFloor struct {
     lock       *sync.Mutex
     DevTracker *DeviceTracker
     vidConns   map[string] *ws.Conn
+    selfSigned bool
 }
 
 func NewControlFloor( config *Config ) (*ControlFloor) {
@@ -60,6 +62,21 @@ func NewControlFloor( config *Config ) (*ControlFloor) {
         lock: &sync.Mutex{},
         vidConns: make( map[string] *ws.Conn ),
     }
+    if config.https {
+        self.base = "https://" + config.cfHost
+        self.wsBase = "wss://" + config.cfHost
+        if config.selfSigned {
+            self.selfSigned = true
+            tr := &http.Transport{
+                TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+                ForceAttemptHTTP2: false,
+            }
+            client.Transport = tr
+        }
+    } else {
+        self.base = "http://" + config.cfHost
+        self.wsBase = "ws://" + config.cfHost
+    }
     
     success := self.login()
     if success {
@@ -91,6 +108,12 @@ func ( self *ControlFloor ) startStream( udid string ) {
         Jar: self.cookiejar,
     }
     
+    if self.selfSigned {
+        fmt.Printf("self signed option\n")
+        dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+        //ws.DefaultDialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+    }
+    
     fmt.Printf("Connecting to CF imgStream\n")
     conn, _, err := dialer.Dial( self.wsBase + "/provider/imgStream?udid=" + udid, nil )
     if err != nil {
@@ -120,6 +143,13 @@ func ( self *ControlFloor ) openWebsocket() {
         Jar: self.cookiejar,
     }
     
+    if self.selfSigned {
+        fmt.Printf("self signed option\n")
+        dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+        //ws.DefaultDialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+    }
+    
+    fmt.Printf("link for dialer = %s\n", self.wsBase + "/provider/ws" )
     conn, _, err := dialer.Dial( self.wsBase + "/provider/ws", nil )
     if err != nil {
         panic( err )
@@ -359,7 +389,11 @@ func doregister( config *Config ) (string) {
     
     username := config.cfUsername
     // send registration to control floor with id and public key
-    resp, err := http.PostForm( "http://" + config.cfHost + "/register",
+    protocol := "http"
+    if config.https {
+        protocol = "https"
+    }
+    resp, err := http.PostForm( protocol + "://" + config.cfHost + "/register",
         url.Values{
             "regPass": {regPass},
             "username": {username},

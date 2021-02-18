@@ -220,10 +220,18 @@ func (self *IIFDev) wdanew( xctestPath string, onStart func(), onStop func( inte
 }
 
 func (self *IIFDev) wda( xctestPath string, port int, onStart func(), onStop func(interface{}) ) {
+  f, err := os.OpenFile("wda.log",
+      os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+  if err != nil {
+      log.WithFields( log.Fields{
+          "type": "wda_log_fail",
+      } ).Fatal("Could not open wda.log for writing")
+  }
+	
   o := ProcOptions {
       procName: "wda",
       binary: "xcodebuild",
-      startDir: "./bin/wda",
+      //startDir: "./bin/wda",
       args: []string{
           "test-without-building",
           "-xctestrun", xctestPath,
@@ -245,10 +253,12 @@ func (self *IIFDev) wda( xctestPath string, port int, onStart func(), onStop fun
           if strings.Contains( line, "configuration is unsupported" ) {
               plog.Println( line )
           }
+          fmt.Fprintln( f, line )
       },
       stderrHandler: func( line string, plog *log.Entry ) {
           if strings.Contains( line, "configuration is unsupported" ) {
               plog.Println( line )
+              fmt.Fprintln( f, line )
           }
       },
       onStop: func( wrapper interface{} ) {

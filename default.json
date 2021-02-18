@@ -1,4 +1,8 @@
 {
+    controlfloor: {
+        https: false
+        selfSigned: false
+    }
     bin_paths: {
         iosif: "bin/iosif"
     }
