@@ -19,10 +19,14 @@ type DeviceTracker struct {
     process    map[string] *GenericProc
     lock       *sync.Mutex
     cf         *ControlFloor
-    bridge  BridgeRoot
+    bridge     BridgeRoot
 }
 
-func NewDeviceTracker( config *Config ) (*DeviceTracker) {
+func NewDeviceTracker( config *Config, detect bool ) (*DeviceTracker) {
+    var cf *ControlFloor
+    if detect {
+      cf = NewControlFloor( config )
+    }
     self := &DeviceTracker{
         process: make( map[string] *GenericProc ),
         lock: &sync.Mutex{},
@@ -32,16 +36,18 @@ func NewDeviceTracker( config *Config ) (*DeviceTracker) {
         localPorts: []int{
             8102, 8103, 8104, 8105, 8106, 8107, 8108, 8109, 8110, 8111, 8112, 8113, 8114, 8115, 8116,
         },
-        cf: NewControlFloor( config ),        
+        cf: cf,        
     }
     self.bridge = NewIIFBridge(
         func( dev BridgeDev ) ProcTracker { return self.onDeviceConnect1( dev ) },
         func( dev BridgeDev ) { self.onDeviceDisconnect1( dev ) },
         config.iosIfPath,
         self,
+        detect,
     )
-    self.cf.DevTracker = self
-        
+    if detect {
+        cf.DevTracker = self
+    }
     return self
 }
 
@@ -89,8 +95,7 @@ func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
     dev := self.onDeviceConnect( udid, bdev )
     self.cf.notifyDeviceInfo( dev )
     dev.startEventLoop()
-    dev.openBackupStream()
-    dev.startBackupFrameProvider()
+    //dev.openBackupStream()
     bdev.setProcTracker( self )
     dev.startProcs()
     return dev
@@ -116,13 +121,13 @@ func (self *DeviceTracker) shutdown() {
     }
     
     for _,dev := range self.DevMap {
-        self.cf.notifyProvisionStopped( dev.uuid )
+        self.cf.notifyProvisionStopped( dev.udid )
     }
     
     for _,dev := range self.DevMap {
         log.WithFields( log.Fields{
             "type": "shutdown_device",
-            "uuid": censorUuid( dev.uuid ),
+            "uuid": censorUuid( dev.udid ),
         } ).Info("Shutdown device")
         dev.shutdown()
     }

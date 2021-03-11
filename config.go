@@ -25,7 +25,7 @@ type Config struct {
     selfSigned bool
 }
 
-func GetStr( root *uj.JNode, path string ) string {
+func GetStr( root uj.JNode, path string ) string {
     node := root.Get( path )
     if node == nil {
         fmt.Fprintf( os.Stderr, "%s is not set in either config.json or default.json" )
@@ -33,7 +33,7 @@ func GetStr( root *uj.JNode, path string ) string {
     }
     return node.String()
 }
-func GetBool( root *uj.JNode, path string ) bool {
+func GetBool( root uj.JNode, path string ) bool {
     node := root.Get( path )
     if node == nil {
         fmt.Fprintf( os.Stderr, "%s is not set in either config.json or default.json" )
@@ -41,7 +41,7 @@ func GetBool( root *uj.JNode, path string ) bool {
     }
     return node.Bool()
 }
-func GetInt( root *uj.JNode, path string ) int {
+func GetInt( root uj.JNode, path string ) int {
     node := root.Get( path )
     if node == nil {
         fmt.Fprintf( os.Stderr, "%s is not set in either config.json or default.json" )
@@ -56,7 +56,7 @@ func NewConfig( configPath string, defaultsPath string ) (*Config) {
     root := loadConfig( configPath, defaultsPath )
     
     config.iosIfPath  = GetStr(  root, "bin_paths.iosif" )
-    config.httpPort  = GetInt(  root, "port" )
+    config.httpPort   = GetInt(  root, "port" )
     config.cfHost     = GetStr(  root, "controlfloor.host" )
     config.cfUsername = GetStr(  root, "controlfloor.username" )
     config.xcPath     = GetStr(  root, "wdaXctestRunFolder" )
@@ -77,12 +77,12 @@ func NewConfig( configPath string, defaultsPath string ) (*Config) {
     return &config
 }
 
-func readDevs( root *uj.JNode ) ( map[string]CDevice ) {
+func readDevs( root uj.JNode ) ( map[string]CDevice ) {
     devs := make( map[string]CDevice )
     
     devsNode := root.Get("devices")
     if devsNode != nil {
-        devsNode.ForEach( func( devNode *uj.JNode ) {
+        devsNode.ForEach( func( devNode uj.JNode ) {
             udid := devNode.Get("udid").String()
                         
             dev := CDevice{
@@ -94,7 +94,7 @@ func readDevs( root *uj.JNode ) ( map[string]CDevice ) {
     return devs
 }
 
-func loadConfig( configPath string, defaultsPath string ) (*uj.JNode) {
+func loadConfig( configPath string, defaultsPath string ) (uj.JNode) {
     fh1, serr1 := os.Stat( defaultsPath )
     if serr1 != nil {
         log.WithFields( log.Fields{

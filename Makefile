@@ -4,9 +4,22 @@ TARGET = main
 
 all: $(TARGET) bin/iosif repos/vidapp
 
+bin/gojq: repos/ujsonin/versionMarker
+	make -C repos/ujsonin gojq && touch bin/gojq
+
+config.mk: config.json bin/gojq
+	@rm -rf config.mk
+	@./bin/gojq makevars -prefix config -file config.json -defaults default.json -outfile config.mk
+
 provider_sources := $(wildcard *.go)
 
-$(TARGET): $(provider_sources)
+@if [ "$(PROD_PATH)" != "" ]; then cp -r $(PROD_PATH)/ bin/wda/; fi;
+
+$(TARGET): config.mk $(provider_sources) go.mod
+	@if [ "$(config_jsonfail)" == "1" ]; then\
+		echo $(config_jsonerr) ;\
+		exit 1;\
+	fi
 	go build -o $(TARGET) -tags macos .
 
 go.sum:
@@ -22,11 +35,20 @@ wdaclean:
 repos/WebDriverAgent:
 	git clone $(config_repos_wda) repos/WebDriverAgent
 
-repos/ujsonin:
-	git clone https://github.com/nanoscopic/ujsonin.git repos/jsonin
+repos/ujsonin/versionMarker: repos/ujsonin repos/versionMarkers/ujsonin
+	cd repos/ujsonin && git pull
+	touch repos/ujsonin/versionMarker
 
-bin/iosif: repos/iosif
+repos/ujsonin:
+	git clone https://github.com/nanoscopic/ujsonin.git repos/ujsonin
+	touch repos/ujsonin/versionMarker
+
+bin/iosif: repos/iosif/versionMarker
 	make -C repos/iosif
+
+repos/iosif/versionMarker: repos/iosif repos/versionMarkers/iosif
+	cd repos/iosif && git pull
+	touch repos/iosif/versionMarker
 
 repos/iosif:
 	git clone $(config_repos_iosif) repos/iosif
@@ -65,12 +87,6 @@ vidtest_unsigned.ipa:
 	mkdir tmp/Payload
 	ln -s ../../vidtest.xcarchive/Products/Applications/vidtest.app tmp/Payload/vidtest.app
 	cd tmp && zip -r ../vidtest.ipa Payload
-
-bin/gojq: repos/ujsonin
-	make -C repos/ujsonin gojq
-
-config.mk: config.json bin/gojq
-	@./bin/gojq makevars -prefix config -file config.json -defaults default.json > config.mk
 
 clonewda: repos/WebDriverAgent
 

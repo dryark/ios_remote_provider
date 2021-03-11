@@ -9,7 +9,10 @@ import (
     "os"
     "os/exec"
     "strings"
+    "strconv"
     "time"
+    "go.nanomsg.org/mangos/v3"
+    nanoReq  "go.nanomsg.org/mangos/v3/protocol/req"
 )
 
 type IIFBridge struct {
@@ -28,7 +31,7 @@ type IIFDev struct {
 }
 
 // IosIF bridge
-func NewIIFBridge( OnConnect func( dev BridgeDev ) (ProcTracker), OnDisconnect func( dev BridgeDev ), iosIfPath string, procTracker ProcTracker ) ( *IIFBridge ) {
+func NewIIFBridge( OnConnect func( dev BridgeDev ) (ProcTracker), OnDisconnect func( dev BridgeDev ), iosIfPath string, procTracker ProcTracker, detect bool ) ( *IIFBridge ) {
   self := &IIFBridge{
     onConnect: OnConnect,
     onDisconnect: OnDisconnect,
@@ -36,7 +39,7 @@ func NewIIFBridge( OnConnect func( dev BridgeDev ) (ProcTracker), OnDisconnect f
     devs: make( map[string]*IIFDev ),
     procTracker: procTracker,
   }
-  self.startDetect();
+  if detect { self.startDetect() }
   return self
 }
 
@@ -136,6 +139,61 @@ func (self *IIFDev) tunnel( pairs []TunPair ) {
   time.Sleep( time.Second * 2 )
 }
 
+func GetDevs( config *Config ) []string {
+  json, _ := exec.Command( config.iosIfPath,
+    []string{ "list", "-json" }... ).Output()
+  root, _ := uj.Parse( []byte( "[" + string(json) + "]" ) )
+  res := []string{}
+  root.ForEach( func( dev uj.JNode ) {
+      res = append( res, dev.Get("udid").String() )
+  } )
+  return res
+}
+
+func (self *IIFDev) GetPid( appname string ) int {
+  json, err := exec.Command( self.bridge.cli,
+    []string{
+      "ps",
+      "-raw",
+      "-appname", appname,
+    }... ).Output()
+    
+  if err != nil {
+    return 0
+  }
+  
+  root, _ := uj.Parse( json )
+  pidNode := root.Get("pid")
+  if pidNode == nil { return 0 }
+  return pidNode.Int()
+}
+
+func (self *IIFDev) AppInfo( bundleId string ) uj.JNode {
+  json, err := exec.Command( self.bridge.cli,
+    []string{
+      "listapps",
+      "-bi", bundleId,
+    }... ).Output()
+  
+  if err != nil { return nil }
+  
+  root, _ := uj.Parse( json )
+  return root
+}
+
+func (self *IIFDev) InstallApp( appPath string ) bool {
+  status, _ := exec.Command( self.bridge.cli,
+    []string{
+      "install",
+      "-path", appPath,
+    }... ).Output()
+  
+  if strings.Contains( string(status), "Installing:100%" ) {
+    return true
+  }
+  return false      
+}
+
 func (self *IIFDev) info( names []string ) map[string]string {
   mapped := make( map[string]string )
   fmt.Printf("udid for info: %s\n", self.udid )
@@ -182,41 +240,193 @@ func (self *IIFDev) gestalt( names []string ) map[string]string {
   return mapped
 }
 
+func (self *IIFDev) ps() []iProc {
+    return []iProc{}
+}
+
 func (self *IIFDev) screenshot() Screenshot {
-  return Screenshot{}
+    return Screenshot{}
 }
 
 func (self *IIFDev) wdanew( xctestPath string, onStart func(), onStop func( interface{} ) ) {
-  o := ProcOptions{
-    procName: "xctest",
-    binary: self.bridge.cli,
-    args: []string{
-      "xctest",
-      xctestPath,
-    },
-    stdoutHandler: func( line string, plog *log.Entry ) {
-        //if debug {
-        //    fmt.Printf("[WDA] %s\n", line)
-        //}
-        if strings.HasPrefix(line, "Test Case '-[UITestingUITests testRunner]' started") {
-            onStart()
-        }
-        if strings.Contains( line, "configuration is unsupported" ) {
-            plog.Println( line )
-        }
-    },
-    stderrHandler: func( line string, plog *log.Entry ) {
-        if strings.Contains( line, "configuration is unsupported" ) {
-            plog.Println( line )
-        }
-        //plog.Println( line )
-    },
-    onStop: func( wrapper interface{} ) {
-      onStop( wrapper )
-    },    
-  }
+    o := ProcOptions{
+        procName: "xctest",
+        binary: self.bridge.cli,
+        args: []string{
+            "xctest",
+            xctestPath,
+        },
+        stdoutHandler: func( line string, plog *log.Entry ) {
+            //if debug {
+            //    fmt.Printf("[WDA] %s\n", line)
+            //}
+            if strings.HasPrefix(line, "Test Case '-[UITestingUITests testRunner]' started") {
+                onStart()
+            }
+            if strings.Contains( line, "configuration is unsupported" ) {
+                plog.Println( line )
+            }
+        },
+        stderrHandler: func( line string, plog *log.Entry ) {
+            if strings.Contains( line, "configuration is unsupported" ) {
+                plog.Println( line )
+            }
+            //plog.Println( line )
+        },
+        onStop: func( wrapper interface{} ) {
+            onStop( wrapper )
+        },
+    }
       
-  proc_generic( self.procTracker, nil, &o )
+    proc_generic( self.procTracker, nil, &o )
+}
+
+type BackupVideo struct {
+    port int
+    sock mangos.Socket
+    spec string
+    imgId int
+}
+
+func (self *IIFDev) NewSyslogMonitor( handleLogItem func( uj.JNode ) ) {
+    bufstr := ""
+    toFetch := 0
+    o := ProcOptions{
+        procName: "syslogMonitor",
+        binary: self.bridge.cli,
+        args: []string {
+            "log",
+            "-id", self.udid,
+            "proc", "SpringBoard(SpringBoard)",
+        },
+        startFields: log.Fields{
+            "id": self.udid,
+        },
+        stdoutHandler: func( line string, plog *log.Entry ) {
+            if line[0] == '*' {
+                i:=1
+                for ;i<6;i++ {
+                    char := line[i]
+                    if char == '[' {
+                        break
+                    }
+                }
+                bytesStr := line[ 1: i ]
+                toFetch, _ = strconv.Atoi( bytesStr )
+                toFetch--
+                
+                rest := line[ i: ]
+                //fmt.Printf("msg len: %d -- want: %d\n", len(rest), toFetch )
+                if len( rest ) == toFetch {
+                    json := line[ i: ]
+                    root, _, err := uj.ParseFull( []byte( json ) )
+                    if err == nil {
+                        handleLogItem( root )
+                    } else {
+                        fmt.Printf("Could not parse:[%s]\n", json )
+                    }
+                } else {
+                    bufstr = rest
+                    toFetch -= len( rest )
+                }
+            } else if toFetch > 0 {
+                if len( line ) < toFetch {
+                    toFetch -= len( line )
+                    bufstr = bufstr + line
+                } else if len( line ) >= toFetch {
+                    bufstr = bufstr + line
+                    
+                    root, _, err := uj.ParseFull( []byte( bufstr ) )
+                    if err == nil {
+                        handleLogItem( root )
+                    } else {
+                        fmt.Printf("Could not parse:[%s]\n", bufstr )
+                    }
+                }
+                
+            }
+        },
+    }
+    
+    proc_generic( self.procTracker, nil, &o )
+}
+
+func (self *IIFDev) NewBackupVideo( port int, onStop func( interface{} ) ) ( *BackupVideo ) {
+    vid := &BackupVideo{
+        port: port,
+    }
+    
+    o := ProcOptions{
+        procName: "backupVideo",
+        binary: self.bridge.cli,
+        args: []string {
+            "iserver",
+            "-port", strconv.Itoa( port ),
+            "-id", self.udid,
+        },
+        startFields: log.Fields{
+            "port": strconv.Itoa( port ),
+            "id": self.udid,
+        },
+        onStop: func( wrapper interface{} ) {
+            onStop( wrapper )
+        },
+        stdoutHandler: func( line string, plog *log.Entry ) {
+            if strings.Contains( line, "listening" ) {
+                plog.Println( line )
+                vid.openBackupStream()
+            }
+            fmt.Println( line )
+        },
+        stderrHandler: func( line string, plog *log.Entry ) {
+            fmt.Println( line )
+        },
+    }
+        
+    proc_generic( self.procTracker, nil, &o )
+    
+    return vid
+}
+
+func (self *BackupVideo) openBackupStream() {
+    var err error
+    
+    self.spec = fmt.Sprintf( "tcp://127.0.0.1:%d", self.port )
+    
+    if self.sock, err = nanoReq.NewSocket(); err != nil {
+        log.WithFields( log.Fields{
+            "type":     "err_socket_new",
+            "err":      err,
+        } ).Error("Backup video Socket new error")
+        return
+    }
+    
+    if err = self.sock.Dial( self.spec ); err != nil {
+        log.WithFields( log.Fields{
+            "type": "err_socket_dial",
+            "spec": self.spec,
+            "err":  err,
+        } ).Error("Backup video Socket dial error")
+        return
+    }
+    
+    self.sock.SetOption( mangos.OptionMaxRecvSize, 3000000 )
+}
+
+func (self *BackupVideo) GetFrame() []byte {
+    self.sock.Send([]byte( fmt.Sprintf("img:%d",self.imgId) ) )
+    self.imgId++
+    
+    msg, err := self.sock.RecvMsg()
+    if err != nil {
+        log.WithFields( log.Fields{
+            "type":     "err_socket_recv",
+            "zmq_spec": self.spec,
+            "err":      err,
+        } ).Info("Backup video recv err")
+    }
+    
+    return msg.Body
 }
 
 func (self *IIFDev) wda( xctestPath string, port int, onStart func(), onStop func(interface{}) ) {

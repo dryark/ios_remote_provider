@@ -3,14 +3,17 @@ package main
 import (
     "bufio"
     "crypto/tls"
+    "errors"
     "fmt"
     "io/ioutil"
+    "net"
     "net/http"
     "net/http/cookiejar"
     "net/url"
     "os"
     "strconv"
     "sync"
+    "reflect"
     log "github.com/sirupsen/logrus"
     uj "github.com/nanoscopic/ujsonin/mod"
     ws "github.com/gorilla/websocket"
@@ -23,7 +26,7 @@ type ControlFloor struct {
     wsBase     string
     cookiejar  *cookiejar.Jar
     client     *http.Client
-    root       *uj.JNode
+    root       uj.JNode
     pass       string
     lock       *sync.Mutex
     DevTracker *DeviceTracker
@@ -103,7 +106,18 @@ func (self *CFR_Pong) asText() string {
     return fmt.Sprintf("{id:%d,text:\"%s\"}\n",self.id, self.text)
 }
 
-func ( self *ControlFloor ) startStream( udid string ) {
+func ( self *ControlFloor ) startVidStream( udid string ) {
+    dev := self.DevTracker.getDevice( udid )
+    dev.startVidStream()
+}
+
+func ( self *ControlFloor ) stopVidStream( udid string ) {
+    dev := self.DevTracker.getDevice( udid )
+    dev.stopVidStream()
+}
+
+// Called from the device object
+func ( self *ControlFloor ) startAppStream( udid string ) ( *ws.Conn ) {
     dialer := ws.Dialer{
         Jar: self.cookiejar,
     }
@@ -120,16 +134,20 @@ func ( self *ControlFloor ) startStream( udid string ) {
         panic( err )
     }
     
-    dev := self.DevTracker.getDevice( udid )
+    fmt.Printf("Connected to cf for imgStream\n")
+    
+    //dev := self.DevTracker.getDevice( udid )
     
     self.lock.Lock()
     self.vidConns[ udid ] = conn
     self.lock.Unlock()
     
-    dev.startStream( conn )
+    return conn
+    //dev.startStream( conn )
 }
 
-func ( self *ControlFloor ) stopStream( udid string ) {
+// Called from the device object
+func ( self *ControlFloor ) stopAppStream( udid string ) {
     vidConn := self.vidConns[ udid ]
     vidConn.Close()
     
@@ -202,6 +220,26 @@ func ( self *ControlFloor ) openWebsocket() {
                                 dev.clickAt( x, y )
                             }
                         } ()
+                    } else if mType == "hardPress" {
+                        udid := root.Get("udid").String()
+                        x := root.Get("x").Int()
+                        y := root.Get("y").Int()
+                        go func() {
+                            dev := self.DevTracker.getDevice( udid )
+                            if dev != nil {
+                                dev.hardPress( x, y )
+                            }
+                        } ()
+                    } else if mType == "longPress" {
+                        udid := root.Get("udid").String()
+                        x := root.Get("x").Int()
+                        y := root.Get("y").Int()
+                        go func() {
+                            dev := self.DevTracker.getDevice( udid )
+                            if dev != nil {
+                                dev.longPress( x, y )
+                            }
+                        } ()
                     } else if mType == "home" {
                         udid := root.Get("udid").String()
                         go func() {
@@ -210,7 +248,7 @@ func ( self *ControlFloor ) openWebsocket() {
                                 dev.home()
                             }
                         } ()
-                    }else if mType == "swipe" {
+                    } else if mType == "swipe" {
                         udid := root.Get("udid").String()
                         x1 := root.Get("x1").Int()
                         y1 := root.Get("y1").Int()
@@ -222,13 +260,13 @@ func ( self *ControlFloor ) openWebsocket() {
                                 dev.swipe( x1, y1, x2, y2 )
                             }
                         } ()
-                    }else if mType == "startStream" {
+                    } else if mType == "startStream" {
                         udid := root.Get("udid").String()
                         fmt.Printf("Got request to start video stream for %s\n", udid )
-                        go func() { self.startStream( udid ) }()
+                        go func() { self.startVidStream( udid ) }()
                     } else if mType == "stopStream" {
                         udid := root.Get("udid").String()
-                        go func() { self.stopStream( udid ) }()
+                        go func() { self.stopVidStream( udid ) }()
                     }
                 }
             }
@@ -237,23 +275,32 @@ func ( self *ControlFloor ) openWebsocket() {
     }()    
 }
 
-func loadCFConfig( configPath string ) (*uj.JNode) {
+func loadCFConfig( configPath string ) (uj.JNode) {
     fh, serr := os.Stat( configPath )
     if serr != nil {
         log.WithFields( log.Fields{
             "type":        "err_read_config",
             "error":       serr,
             "config_path": configPath,
-        } ).Fatal("Could not read specified config path")
+        } ).Fatal(
+          "Could not read ControlFloor auth token. Have you run `./main register`?",
+        )
     }
     configFile := configPath
     switch mode := fh.Mode(); {
         case mode.IsDir(): configFile = fmt.Sprintf("%s/config.json", configPath)
     }
     content, err := ioutil.ReadFile( configFile )
-	if err != nil { log.Fatal( err ) }
+    if err != nil { log.Fatal( err ) }
 	
-    root, _ := uj.Parse( content )
+    root, _, perr := uj.ParseFull( content )
+    if perr != nil {
+        log.WithFields( log.Fields{
+            "error": perr,
+        } ).Fatal(
+            "ControlFloor auth token is invalid. Rerun `./main register`",
+        )
+    }
     
     return root
 }
@@ -286,7 +333,7 @@ func (self *ControlFloor) baseNotify( name string, udid string, vals url.Values 
 
 func (self *ControlFloor) notifyDeviceInfo( dev *Device ) {
     info := dev.info
-    udid := dev.uuid
+    udid := dev.udid
     str := "{"
     for key, val := range info {
         str = str + fmt.Sprintf("\"%s\":\"%s\",", key, val )
@@ -353,6 +400,25 @@ func (self *ControlFloor) login() (bool) {
         },
     )
     if err != nil {
+        var urlError *url.Error
+        if errors.As( err, &urlError ) {
+          var netOpError *net.OpError 
+          if errors.As( urlError, &netOpError ) {
+            rootErr := netOpError.Err
+            if( rootErr.Error() == "connect: connection refused" ) {
+              fmt.Printf("Could not connect to ControlFarm; is it running?\n")
+            } else {
+              fmt.Printf("Err type:%s - %s\n", reflect.TypeOf(err), err )
+              fmt.Printf("urlError type:%s - %s\n", reflect.TypeOf(urlError), urlError );
+              fmt.Printf("netOpError type:%s - %s\n", reflect.TypeOf(netOpError), netOpError )
+            }
+          } else {
+            fmt.Printf("Err type:%s - %s\n", reflect.TypeOf(err), err )
+            fmt.Printf("urlError type:%s - %s\n", reflect.TypeOf(urlError), urlError );
+          }
+        } else {
+          fmt.Printf("Err type:%s - %s\n", reflect.TypeOf(err), err )
+        }
         panic( err )
     }
     
@@ -412,6 +478,7 @@ func doregister( config *Config ) (string) {
         panic( readErr )
     }
     
+    fmt.Println( string(body) )
     root, _ := uj.Parse( body )
     
     sNode := root.Get("Success")

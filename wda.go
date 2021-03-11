@@ -17,7 +17,7 @@ import (
 )
 
 type WDA struct {
-    uuid         string
+    udid         string
     onDevicePort int
     localhostPort int
     devTracker   *DeviceTracker
@@ -26,11 +26,12 @@ type WDA struct {
     config       *Config
     base         string
     sessionId    string
+    startChan    chan bool
 }
 
 func NewWDA( config *Config, devTracker *DeviceTracker, dev *Device, localhostPort int ) (*WDA) {
     self := WDA{
-        uuid: dev.uuid,
+        udid: dev.udid,
         onDevicePort: 8100,
         localhostPort: localhostPort,
         devTracker: devTracker,
@@ -49,10 +50,10 @@ func (self *WDA) start() {
         TunPair{ from: self.localhostPort, to: self.onDevicePort },
     }
     self.dev.bridge.tunnel( pairs )
-        
+    
     xctestrunFile := findXctestrun("./bin/wda")
     if xctestrunFile == "" {
-        log.Fatal("Could not find WebDriverAgent.xcodeproj or xctestrun of sufficient version")
+        log.Fatal("Could not find xctestrun of sufficient version")
         return
     }
     
@@ -62,9 +63,12 @@ func (self *WDA) start() {
         func() { // onStart
             log.WithFields( log.Fields{
                 "type": "wda_start",
-                "uuid":  censorUuid(self.uuid),
+                "udid":  censorUuid(self.udid),
                 "port": self.localhostPort,
             } ).Info("[WDA] successfully started")
+            if self.startChan != nil {
+                self.startChan <- true
+            }
             self.dev.EventCh <- DevEvent{
                 action: 1,
             }
@@ -87,10 +91,16 @@ func (self *WDA) stop() {
 func findXctestrun(folder string) string {
     iosversion := ""
     
+    if _, err := os.Stat( folder ); os.IsNotExist( err ) {
+        log.Warn( fmt.Sprintf( "Directory %s does not exist; WDA not built? Run `make wda`\n", folder ) )
+        return ""
+    }
+    
     folder, _ = filepath.EvalSymlinks( folder )
     
     var files []string
     err := filepath.Walk(folder, func( file string, info os.FileInfo, err error ) error {
+        if err != nil { return nil }
         if info.IsDir() && folder != file {
             //fmt.Printf("skipping %s\n", file)
             return filepath.SkipDir
@@ -163,10 +173,10 @@ func resp_to_str( resp *http.Response ) ( string ) {
     //return buf.String()  
 }
 
-func resp_to_val( resp *http.Response ) ( *uj.JNode ) {
+func resp_to_val( resp *http.Response ) ( uj.JNode ) {
   rawContent := resp_to_str( resp )
   if !strings.HasPrefix( rawContent, "{" ) {
-    return nil // &JNode{ nodeType: 1, hash: NewNodeHash() }
+    return nil // &JHash{ nodeType: 1, hash: NewNodeHash() }
   }
   content, _ := uj.Parse( []byte( rawContent ) )
   val := content.Get("value")
@@ -220,6 +230,65 @@ func (self *WDA) clickAt( x int, y int ) (string) {
     return res    
 }
 
+func (self *WDA) hardPress( x int, y int ) (string) {
+  log.Info( "Hard Press:", x, y )
+    json := fmt.Sprintf( `{
+        "actions":[
+            {
+              "action": "press",
+              "options": {
+                "x":%d,
+                "y":%d,
+                "pressure":2000
+              }
+            },
+            {
+              "action":"wait",
+              "options": {
+                "ms": 100
+              }
+            },
+            {
+              "action":"release",
+              "options":{}
+            }
+        ]
+    }`, x, y )
+    resp, _ := http.Post( self.base + "/session/" + self.sessionId + "/wda/touch/perform", "application/json", strings.NewReader( json ) )
+    res := resp_to_str( resp )
+    log.Info( "response " + res )
+    return res    
+}
+
+func (self *WDA) longPress( x int, y int ) (string) {
+    log.Info( "Long Press:", x, y )
+    json := fmt.Sprintf( `{
+    "actions": [
+      {
+        "action": "press",
+        "options": {
+          "x":%d,
+          "y":%d
+        }
+      },
+      {
+        "action":"wait",
+        "options": {
+          "ms": 500
+        }
+      },
+      {
+        "action":"release",
+        "options":{}
+      }
+    ]
+    }`, x, y )
+    resp, _ := http.Post( self.base + "/session/" + self.sessionId + "/wda/touch/perform", "application/json", strings.NewReader( json ) )
+    res := resp_to_str( resp )
+    log.Info( "response " + res )
+    return res
+}
+
 func (self *WDA) home() (string) {
     resp, _ := http.Post( self.base + "/wda/homescreen", "application/json", strings.NewReader( "{}" ) )
     res := resp_to_str( resp )
@@ -261,4 +330,85 @@ func ( self *WDA ) swipe( x1 int, y1 int, x2 int, y2 int ) ( string ) {
     res := resp_to_str( resp )
     log.Info( "response " + res )
     return res
+}
+
+func (self *WDA) ElClick( elId string ) {
+    http.Post(
+        self.base + "/session/" + self.sessionId + "/element/" + elId + "/click",
+        "application/json",
+        strings.NewReader( "{}" ),
+        )
+}
+
+func (self *WDA) ElForceTouch( elId string, pressure int ) {
+    jsonIn := fmt.Sprintf( `{
+        "duration": 1,
+        "pressure": %d
+    }`, pressure )
+    
+    resp, _ := http.Post(
+        self.base + "/session/" + self.sessionId + "/wda/element/" + elId + "/forceTouch",
+        "application/json",
+        strings.NewReader( jsonIn ),
+        )
+    
+    json := resp_to_str( resp )
+    fmt.Println( json )
+}
+
+func (self *WDA) ElByName( elName string ) string {
+    jsonIn := fmt.Sprintf( `{
+        "using": "name",
+        "value": "%s"
+    }`, elName )
+    
+    resp, _ := http.Post(
+        self.base + "/session/" + self.sessionId + "/element", "application/json",
+        strings.NewReader( jsonIn ),
+        )
+    
+    json := resp_to_str( resp )
+    //fmt.Println( json )
+    
+    root, _ := uj.Parse( []byte(json) )
+    elNode := root.Get("value").Get("ELEMENT")
+    if elNode == nil { return "" }
+    return elNode.String()
+}
+
+func (self *WDA) WindowSize() (int,int) {
+    resp, _ := http.Get( self.base + "/session/" + self.sessionId + "/window/size" )
+    
+    json := resp_to_str( resp )
+    //fmt.Println( json )
+    
+    root, _ := uj.Parse( []byte(json) )
+    wid := root.Get("value").Get("width").Int()
+    heg := root.Get("value").Get("height").Int()
+    
+    return wid,heg
+}
+
+func (self *WDA) OpenControlCenter() {
+    width, height := self.WindowSize()
+    
+    midx := width / 2
+    maxy := height - 1
+    self.swipe( midx, maxy, midx, maxy - 100 )
+}
+
+func (self *WDA) StartBroadcastStream( appName string ) {
+  self.OpenControlCenter()
+  
+  devEl := self.ElByName( "Screen Recording" )
+  
+  self.ElForceTouch( devEl, 2000 )
+  
+  appEl := self.ElByName( appName )
+  self.ElClick( appEl )
+  
+  startBtn := self.ElByName( "Start Broadcast" )
+  self.ElClick( startBtn )
+  
+  time.Sleep( time.Second * 5 )
 }

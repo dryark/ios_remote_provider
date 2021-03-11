@@ -2,35 +2,45 @@ package main
 
 import (
     "fmt"
-    //"os"
+    "strings"
     "sync"
     "time"
     log "github.com/sirupsen/logrus"
     ws "github.com/gorilla/websocket"
-    //gocmd "github.com/go-cmd/cmd"
-    "go.nanomsg.org/mangos/v3"
-	//nanoPull "go.nanomsg.org/mangos/v3/protocol/pull"
-	nanoReq  "go.nanomsg.org/mangos/v3/protocol/req"
+    uj "github.com/nanoscopic/ujsonin/mod"
+    //"go.nanomsg.org/mangos/v3"
+    //nanoReq  "go.nanomsg.org/mangos/v3/protocol/req"
+)
+
+const (
+    VID_NONE = iota
+    VID_APP
+    VID_BRIDGE
+    VID_WDA
+    VID_ENABLE
+    VID_DISABLE
+    VID_END
 )
 
 type Device struct {
-    uuid        string
+    udid        string
     name        string
     lock        *sync.Mutex
     wdaPort     int
     vidPort     int
-    vidControlPort    int
+    vidControlPort  int
+    backupVideoPort int
     iosVersion  string
     productType string
     productNum  string
     vidWidth    int
     vidHeight   int
+    vidMode     int
     process     map[string] *GenericProc
     owner       string
     connected   bool
     EventCh     chan DevEvent
     BackupCh    chan BackupEvent
-    backupSock  mangos.Socket
     wda         *WDA
     devTracker  *DeviceTracker
     config      *Config
@@ -40,16 +50,21 @@ type Device struct {
     appStreamStopChan chan bool
     vidOut      *ws.Conn
     bridge      BridgeDev
+    backupVideo *BackupVideo
+    backupActive bool
 }
 
-func NewDevice( config *Config, devTracker *DeviceTracker, uuid string, bdev BridgeDev ) (*Device) {
+func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev BridgeDev ) (*Device) {
     dev := Device{
         devTracker: devTracker,
         wdaPort:    devTracker.getPort(),
-        vidPort:   devTracker.getPort(),
-        vidControlPort:   devTracker.getPort(),
+        vidPort:    devTracker.getPort(),
+        vidMode:    VID_NONE,
+        vidControlPort:  devTracker.getPort(),
+        backupVideoPort: devTracker.getPort(),
+        backupActive: false,
         config:     config,
-        uuid:       uuid,
+        udid:       udid,
         lock:       &sync.Mutex{},
         process:    make( map[string] *GenericProc ),
         cf:         devTracker.cf,
@@ -78,18 +93,18 @@ type BackupEvent struct {
 
 type DevEvent struct {
     action int
-    width      int
-    height     int
+    width  int
+    height int
 }
 
 func (self *Device) shutdown() {
     go func() { self.EventCh <- DevEvent{ action: 0 } }()
-    go func() { self.BackupCh <- BackupEvent{ action: 2 } }()
+    go func() { self.BackupCh <- BackupEvent{ action: VID_END } }()
     
     for _,proc := range self.process {
         log.WithFields( log.Fields{
             "type": "shutdown_dev_proc",
-            "uuid": censorUuid( self.uuid ),
+            "udid": censorUuid( self.udid ),
             "proc": proc.name,
             "pid":  proc.pid,
         } ).Info("Shutdown proc")
@@ -107,11 +122,11 @@ func (self *Device) startEventLoop() {
                 if action == 0 { // stop event loop
                     break DEVEVENTLOOP
                 } else if action == 1 { // WDA started
-                    self.cf.notifyWdaStarted( self.uuid )
+                    self.cf.notifyWdaStarted( self.udid )
                     self.wda.ensureSession()
                     // start video streaming
                 } else if action == 2 { // WDA stopped
-                    self.cf.notifyWdaStopped( self.uuid )
+                    self.cf.notifyWdaStopped( self.udid )
                 } else if action == 3 { // first video frame
                     self.onFirstFrame( &event )
                 }
@@ -124,54 +139,50 @@ func (self *Device) startBackupFrameProvider() {
     go func() {
         sending := false
         for {
-            time.Sleep( time.Millisecond * 200 ) // 5 times a second
             select {
             case ev := <- self.BackupCh:
                 action := ev.action
-                if action == 0 { // begin sending backup frames
+                if action == VID_ENABLE { // begin sending backup frames
                     sending = true
-                } else if action == 1 {
+                } else if action == VID_DISABLE {
                     sending = false
-                } else if action == 2 {
+                } else if action == VID_END {
                     break
-                }        
+                }
+            default:
             }
             if sending {
                 self.sendBackupFrame()
+                time.Sleep( time.Millisecond * 500 )
+            } else {
+                time.Sleep( time.Millisecond * 100 )
             }
         }
     }()
 }
 
-func (self *Device) openBackupStream() {
-    var err error
-    
-    spec := "tcp://127.0.0.1:8912"
-    
-    if self.backupSock, err = nanoReq.NewSocket(); err != nil {
-        log.WithFields( log.Fields{
-            "type":     "err_socket_new",
-            "zmq_spec": spec,
-            "err":      err,
-        } ).Info("Socket new error")
-        return
-    }
-    
-    if err = self.backupSock.Dial( spec ); err != nil {
-        log.WithFields( log.Fields{
-            "type": "err_socket_dial",
-            "spec": spec,
-            "err":  err,
-        } ).Info("Socket dial error")
-        return
-    }
+func (self *Device) disableBackupVideo() {
+    self.BackupCh <- BackupEvent{ action: VID_DISABLE }
+    self.vidMode = VID_APP
+    self.backupActive = false
+}
+
+func (self *Device) enableBackupVideo() {
+    self.BackupCh <- BackupEvent{ action: VID_ENABLE }
+    self.vidMode = VID_BRIDGE
+    self.backupActive = true
 }
 
 func (self *Device) sendBackupFrame() {
-    self.backupSock.Send([]byte("img"))
-    
-    msg, _ := self.backupSock.RecvMsg()
-    self.vidOut.WriteMessage( ws.BinaryMessage, msg.Body )
+    //fmt.Printf(".")
+    if self.vidOut != nil {
+        //fmt.Printf("Fetching frame\n")
+        pngData := self.backupVideo.GetFrame()
+        //fmt.Printf("  Got back %d bytes\n", len( pngData ) )
+        if( len( pngData ) > 0 ) {
+            self.vidOut.WriteMessage( ws.BinaryMessage, pngData )
+        }
+    }
 }
 
 func (self *Device) stopEventLoop() {
@@ -185,13 +196,68 @@ func (self *Device) startProcs() {
     self.wda = NewWDA( self.config, self.devTracker, self, self.wdaPort )
     //proc_ios_video_stream( self.devTracker, self )
     
-    self.forwardVidPorts( self.uuid )
+    self.startBackupFrameProvider() // just the timed loop
+    self.backupVideo = self.bridge.NewBackupVideo( 
+        self.backupVideoPort,
+        func( interface{} ) {}, // onStop
+    )
+    self.enableVideo()
+    //self.enableBackupVideo()
+    self.bridge.NewSyslogMonitor( func( root uj.JNode ) {
+        msg := root.GetAt( 3 ).String()
+        
+        //fmt.Printf("Msg:%s\n", msg )
+        
+        if strings.Contains( msg, "Presenting <SBUserNotificationAlert" ) {
+            fmt.Printf("Alert appeared\n")
+            self.enableBackupVideo()
+        } else if strings.Contains( msg, "deactivate alertItem: <SBUserNotificationAlert" ) {
+            fmt.Printf("Alert went away\n")
+            self.disableBackupVideo()
+        }
+    } )
+    
+    self.forwardVidPorts( self.udid )
     self.appStreamStopChan = make( chan bool )
-    self.vidStreamer = NewAppStream( self.appStreamStopChan, self.vidControlPort, self.vidPort, self.uuid )
+    self.vidStreamer = NewAppStream( self.appStreamStopChan, self.vidControlPort, self.vidPort, self.udid )
     self.vidStreamer.mainLoop()
 }
 
-func (self *Device) startStream( conn *ws.Conn ) {
+func (self *Device) enableVideo() {
+    // check if video app is running
+    vidPid := self.bridge.GetPid( "vidtest2" )
+    // if it is running, go ahead and use it
+    if vidPid != 0 {
+        self.vidMode = VID_APP
+        return
+    }
+    
+    self.wda.ensureSession()
+    
+    // if video app is not running, check if it is installed
+    installInfo := self.bridge.AppInfo( "vidtest2" )
+    // if installed, start it
+    if installInfo != nil {
+        self.wda.StartBroadcastStream( "vidtest2" )
+        self.vidMode = VID_APP
+        return
+    }
+    
+    // if video app is not installed
+    // install it, then start it
+    success := self.bridge.InstallApp( "vidtest.xcarchive/Products/Applications/vidtest.app" )
+    if success {
+        self.wda.StartBroadcastStream( "vidtest2" )
+        self.vidMode = VID_APP
+        return
+    }
+    
+    // if video app failed to start or install, just leave backup video running
+}
+
+func (self *Device) startVidStream() { // conn *ws.Conn ) {
+    conn := self.cf.startAppStream( self.udid )
+    
     controlChan := self.vidStreamer.getControlChan()
     
     // Necessary so that writes to the socket fail when the connection is lost
@@ -206,32 +272,25 @@ func (self *Device) startStream( conn *ws.Conn ) {
     
     self.vidOut = conn
     
-    backupActive := false
+    //backupActive := false
     
     imgConsumer := NewImageConsumer( func( text string, data []byte ) (error) {
-        //fmt.Printf("Image consume\n")
-        if backupActive {
-            self.BackupCh <- BackupEvent{
-                action: 1,
-            }
-            backupActive = false
-            conn.WriteMessage( ws.TextMessage, []byte( fmt.Sprintf("{\"action\":\"normalFrame\"}") ) )
-        }
+        if self.vidMode != VID_APP { return nil }
+        // conn.WriteMessage( ws.TextMessage, []byte( fmt.Sprintf("{\"action\":\"normalFrame\"}") ) )
         return conn.WriteMessage( ws.BinaryMessage, data )
     }, func() {
         // there are no frames to send
-        backupActive = true
-        conn.WriteMessage( ws.TextMessage, []byte( fmt.Sprintf("{\"action\":\"backupFrame\"}") ) )
-    
-        self.BackupCh <- BackupEvent{
-            action: 0,
-        }
     } )
     
     self.vidStreamer.setImageConsumer( imgConsumer )
     
     fmt.Printf("Telling video stream to start\n")
     controlChan <- 1 // start
+}
+
+func (self *Device) stopVidStream() {
+    self.vidOut = nil
+    self.cf.stopAppStream( self.udid )
 }
 
 func (self *Device) forwardVidPorts( udid string ) {
@@ -256,12 +315,20 @@ func (self *Device) onFirstFrame( event *DevEvent ) {
         "proc":       "ios_video_stream",
         "width":      self.vidWidth,
         "height":     self.vidWidth,
-        "uuid":       censorUuid( self.uuid ),
+        "udid":       censorUuid( self.udid ),
     } ).Info("Video - first frame")
 }
 
 func (self *Device) clickAt( x int, y int ) {
     self.wda.clickAt( x, y )
+}
+
+func (self *Device) hardPress( x int, y int ) {
+    self.wda.hardPress( x, y )
+}
+
+func (self *Device) longPress( x int, y int ) {
+    self.wda.longPress( x, y )
 }
 
 func (self *Device) home() {

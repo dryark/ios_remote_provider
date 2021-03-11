@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+  "fmt"
+  uj "github.com/nanoscopic/ujsonin/mod"
+)
 
 type TunPair struct {
   from int
@@ -28,13 +31,24 @@ type BridgeRoot interface {
   list() []BridgeDevInfo
 }
 
+type iProc struct {
+  pid int32
+  name string
+}
+
 type BridgeDev interface {
   getUdid() string
   tunnel( pairs []TunPair )
   info( names []string ) map[string]string
   gestalt( names []string ) map[string]string
+  ps() []iProc
   screenshot() Screenshot
   wda( name string, port int, onStart func(), onStop func(interface{}) )
   destroy()
   setProcTracker( procTracker ProcTracker )
+  NewBackupVideo( port int, onStop func( interface{} ) ) ( *BackupVideo )
+  GetPid( appname string ) int
+  AppInfo( bundleId string ) uj.JNode
+  InstallApp( appPath string ) bool
+  NewSyslogMonitor( handleLogItem func( uj.JNode ) )
 }

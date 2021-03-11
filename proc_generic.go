@@ -105,7 +105,7 @@ func proc_generic( procTracker ProcTracker, wrapper interface{}, opt *ProcOption
     go func() { for {
         plog.WithFields( startFields ).Info("Process start - " + opt.procName)
 
-        cmd := gocmd.NewCmdOptions( gocmd.Options{ Streaming: true }, opt.binary, opt.args... )
+        cmd := gocmd.NewCmdOptions( gocmd.Options{ Buffered: false, Streaming: true }, opt.binary, opt.args... )
         proc.cmd = cmd
         
         if opt.startDir != "" {
@@ -178,13 +178,13 @@ func proc_generic( procTracker ProcTracker, wrapper interface{}, opt *ProcOption
                     } else if msg.msgType == 2 { // restart
                         proc.cmd.Stop()
                     }
-                case line := <- outStream:
+                case line, _ := <- outStream:
                     if opt.stdoutHandler != nil {
                         opt.stdoutHandler( line, plog )
                     } else {
                         plog.WithFields( log.Fields{ "line": line } ).Info("")
                     }
-                case line := <- errStream:
+                case line, _ := <- errStream:
                     if opt.stderrHandler != nil {
                         opt.stderrHandler( line, plog )
                     } else {

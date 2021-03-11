@@ -1,7 +1,11 @@
 package main
 
 import (
+    "fmt"
     "os"
+    "os/signal"
+    "syscall"
+    "time"
     log "github.com/sirupsen/logrus"
     uc "github.com/nanoscopic/uclop/mod"
 )
@@ -17,7 +21,80 @@ func main() {
     uclop.AddCmd( "run", "Run ControlFloor", runMain, commonOpts )
     uclop.AddCmd( "register", "Register against ControlFloor", runRegister, commonOpts )
     uclop.AddCmd( "cleanup", "Cleanup leftover processes", runCleanup, nil )
+    
+    clickOpts := uc.OPTS{
+        uc.OPT("-el","Element name to click",0),
+    }
+    uclop.AddCmd( "click", "Click element", runClick, clickOpts )
+    uclop.AddCmd( "wda", "Just run WDA", runWDA, nil )
+    
     uclop.Run()
+}
+
+func wdaForDev1() (*WDA,*DeviceTracker) {
+    config := NewConfig( "config.json", "default.json" )
+    
+    devs := GetDevs( config )
+    dev1 := devs[0]
+    fmt.Printf("Dev id: %s\n", dev1)
+    
+    tracker := NewDeviceTracker( config, false )
+    iifDev := NewIIFDev( tracker.bridge.(*IIFBridge), dev1, "x" )
+    dev := NewDevice( config, tracker, dev1, iifDev )
+    iifDev.setProcTracker( tracker )
+    wda := NewWDA( config, tracker, dev, 8100 )
+    return wda,tracker
+}
+
+func runWDA( cmd *uc.Cmd ) {
+    runCleanup( cmd )
+    
+    _,tracker := wdaForDev1()
+ 
+    dotLoop( cmd, tracker )
+}
+
+func dotLoop( cmd *uc.Cmd, tracker *DeviceTracker ) {
+    c := make(chan os.Signal)
+    stop := make(chan bool)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+    go func() {
+        <- c
+        stop <- true
+        tracker.shutdown()
+    }()
+    
+    exit := 0
+    for {
+        select {
+          case <- stop:
+            exit = 1
+            break
+          default:
+        }
+        if exit == 1 { break }
+        fmt.Printf(". ")
+        time.Sleep( time.Second * 1 )
+    }
+    
+    runCleanup( cmd )
+}
+
+func runClick( cmd *uc.Cmd ) {
+    runCleanup( cmd )
+    
+    wda,tracker := wdaForDev1()
+    startChan := make( chan bool )
+    wda.startChan = startChan
+    <- startChan
+    
+    wda.ensureSession()
+    wda.OpenControlCenter()
+    recBtn := wda.ElByName( "Screen Recording" )
+    fmt.Printf("recBtn:%s\n", recBtn )
+    wda.ElForceTouch( recBtn, 2000 )
+    
+    dotLoop( cmd, tracker )
 }
 
 func common( cmd *uc.Cmd ) *Config {
@@ -51,7 +128,7 @@ func runMain( cmd *uc.Cmd ) {
         
     cleanup_procs( config )
         
-    devTracker := NewDeviceTracker( config )
+    devTracker := NewDeviceTracker( config, true )
     coro_sigterm( config, devTracker )
     
     coroHttpServer( devTracker )

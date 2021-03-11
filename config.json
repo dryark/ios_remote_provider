@@ -2,6 +2,8 @@
     controlfloor: {
         host: "localhost:8080"
         username: "first"
+        https: true
+        selfSigned: true
     }
     wda: {
         // Your Apple Developer Team OU
@@ -28,4 +30,5 @@
         devTeamOu: "[your dev team ou]"
         bundleIdPrefix: "com.dryark"
     }
+
 }

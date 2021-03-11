@@ -67,7 +67,9 @@ func NewAppStream( stopChan chan bool, controlPort int, vidPort int, udid string
 
 func (self *AppStream) setImageConsumer( imgConsumer *ImageConsumer ) {
     self.imgHandler.setImageConsumer( imgConsumer )
-    self.controlSocket.Send([]byte(`{"action": "oneframe"}`))
+    if self.controlSocket != nil {
+        self.controlSocket.Send([]byte(`{"action": "oneframe"}`))
+    }
 }
 
 func (self *AppStream) getControlChan() ( chan int ) {
@@ -77,6 +79,7 @@ func (self *AppStream) getControlChan() ( chan int ) {
 func (self *AppStream) openControl() (mangos.Socket,bool,chan bool) {
     var controlSocket mangos.Socket
     var controlStopChan chan bool
+    failures := 0
     for {
         select {
             case <- self.stopChan: return nil,true,nil
@@ -89,6 +92,11 @@ func (self *AppStream) openControl() (mangos.Socket,bool,chan bool) {
             break
         }
         time.Sleep( time.Second * 10 )
+        failures = failures + 1
+        if failures >= 1 {
+            fmt.Printf("Failed to connect video app control 5 times. Giving up.")
+            return nil,true,nil
+        }
     }
     return controlSocket,false,controlStopChan
 }
@@ -97,6 +105,7 @@ func (self *AppStream) openVideo() (mangos.Socket,bool,chan bool) {
     var imgSocket mangos.Socket
     var vidStopChan chan bool
     fmt.Printf("Attempting to connect to video\n")
+    failures := 0
     for {
         select {
             case <- self.stopChan: return nil,true,nil
@@ -106,6 +115,11 @@ func (self *AppStream) openVideo() (mangos.Socket,bool,chan bool) {
         imgSocket, res, vidStopChan = self.dialAppVideo()
         if res == 0 { break }
         time.Sleep( time.Second * 1 )
+        failures = failures + 1
+        if failures >= 1 {
+            fmt.Printf("Failed to connect video app stream 5 times. Giving up.")
+            return nil,true,nil
+        }
     }
     fmt.Printf("Connected to video port\n")
     return imgSocket,false,vidStopChan
@@ -148,7 +162,7 @@ func (self *AppStream) mainLoop() {
         }
         
         if self.controlSocket != nil { self.controlSocket.Close() }
-        if imgSocket     != nil { imgSocket.Close() }
+        if imgSocket          != nil { imgSocket.Close() }
     }()
 }
 
@@ -193,7 +207,7 @@ func ( self *AppStream) dialAppVideo() ( mangos.Socket, int, chan bool ) {
     return pullSock, 0, vidStopChan
 }
 
-func ( self *AppStream) dialAppControl() ( mangos.Socket, int, chan bool ) {
+func (self *AppStream) dialAppControl() ( mangos.Socket, int, chan bool ) {
     controlSpec := self.controlSpec
     
     var err error
