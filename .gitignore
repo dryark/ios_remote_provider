@@ -1,10 +1,14 @@
 **~
 main
 go.sum
-repos
 python/deps_installed
 vidtest.xcarchive
 vidtest.ipa
 tmp
 muxed.json
 config.mk
+repos/WebDriverAgent/
+repos/iosif/
+repos/mod-pbxproj/
+repos/ujsonin
+repos/vidapp
