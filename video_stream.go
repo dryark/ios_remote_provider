@@ -14,7 +14,7 @@ import (
 	_ "go.nanomsg.org/mangos/v3/transport/all"
 	
 	log "github.com/sirupsen/logrus"
-	uj "github.com/nanoscopic/ujsonin/mod"
+	uj "github.com/nanoscopic/ujsonin/v2/mod"
 )
 
 type ImageConsumer struct {

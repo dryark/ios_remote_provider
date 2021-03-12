@@ -2,7 +2,7 @@ package main
 
 import (
   "fmt"
-  uj "github.com/nanoscopic/ujsonin/mod"
+  uj "github.com/nanoscopic/ujsonin/v2/mod"
 )
 
 type TunPair struct {

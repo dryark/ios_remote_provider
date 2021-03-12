@@ -13,7 +13,7 @@ import (
     "strconv"
     "time"
     log "github.com/sirupsen/logrus"
-    uj "github.com/nanoscopic/ujsonin/mod"
+    uj "github.com/nanoscopic/ujsonin/v2/mod"
 )
 
 type WDA struct {

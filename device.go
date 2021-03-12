@@ -7,7 +7,7 @@ import (
     "time"
     log "github.com/sirupsen/logrus"
     ws "github.com/gorilla/websocket"
-    uj "github.com/nanoscopic/ujsonin/mod"
+    uj "github.com/nanoscopic/ujsonin/v2/mod"
     //"go.nanomsg.org/mangos/v3"
     //nanoReq  "go.nanomsg.org/mangos/v3/protocol/req"
 )

@@ -1,10 +1,8 @@
-// +build macos
-
 package main
 
 import (
     "fmt"
-    uj "github.com/nanoscopic/ujsonin/mod"
+    uj "github.com/nanoscopic/ujsonin/v2/mod"
     log "github.com/sirupsen/logrus"
     "os"
     "os/exec"

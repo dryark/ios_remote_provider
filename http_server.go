@@ -6,7 +6,7 @@ import (
     "net/http"
     "strings"
     
-    uj "github.com/nanoscopic/ujsonin/mod"
+    uj "github.com/nanoscopic/ujsonin/v2/mod"
     log "github.com/sirupsen/logrus"
 )
 
