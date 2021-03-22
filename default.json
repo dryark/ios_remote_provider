@@ -5,6 +5,7 @@
     }
     bin_paths: {
         iosif: "bin/iosif"
+        wda: "bin/wda"
     }
     repos: {
         wda: "https://github.com/appium/WebDriverAgent.git"

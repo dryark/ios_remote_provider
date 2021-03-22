@@ -18,7 +18,12 @@ func main() {
         uc.OPT("-config","Config file to use",0),
         uc.OPT("-defaults","Defaults config file to use",0),
     }
-    uclop.AddCmd( "run", "Run ControlFloor", runMain, commonOpts )
+    
+    runOpts := append( commonOpts,
+        uc.OPT("-nosanity","Skip sanity checks",uc.FLAG),
+    )
+    
+    uclop.AddCmd( "run", "Run ControlFloor", runMain, runOpts )
     uclop.AddCmd( "register", "Register against ControlFloor", runRegister, commonOpts )
     uclop.AddCmd( "cleanup", "Cleanup leftover processes", runCleanup, nil )
     
@@ -127,7 +132,13 @@ func runMain( cmd *uc.Cmd ) {
     config := common( cmd )
         
     cleanup_procs( config )
-        
+    
+    nosanity := cmd.Get("-nosanity").Bool()
+    if !nosanity {
+        sane := sanityChecks( config, cmd )
+        if !sane { return }
+    }
+    
     devTracker := NewDeviceTracker( config, true )
     coro_sigterm( config, devTracker )
     

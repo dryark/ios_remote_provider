@@ -260,6 +260,15 @@ func ( self *ControlFloor ) openWebsocket() {
                                 dev.swipe( x1, y1, x2, y2 )
                             }
                         } ()
+                    } else if mType == "keys" {
+                        udid := root.Get("udid").String()
+                        keys := root.Get("keys").String()
+                        go func() {
+                            dev := self.DevTracker.getDevice( udid )
+                            if dev != nil {
+                                dev.keys( keys )
+                            }
+                        } ()
                     } else if mType == "startStream" {
                         udid := root.Get("udid").String()
                         fmt.Printf("Got request to start video stream for %s\n", udid )

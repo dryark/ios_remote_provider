@@ -175,6 +175,7 @@ func resp_to_str( resp *http.Response ) ( string ) {
 
 func resp_to_val( resp *http.Response ) ( uj.JNode ) {
   rawContent := resp_to_str( resp )
+  if len( rawContent ) == 0 { return nil }
   if !strings.HasPrefix( rawContent, "{" ) {
     return nil // &JHash{ nodeType: 1, hash: NewNodeHash() }
   }
@@ -185,7 +186,7 @@ func resp_to_val( resp *http.Response ) ( uj.JNode ) {
 }
 
 func ( self *WDA ) create_session( bundle string ) ( string ) {
-  time.Sleep( time.Second * 3 )
+  time.Sleep( time.Second * 4 )
   ops := fmt.Sprintf( `{
     "capabilities": {
       "alwaysMatch": {},
@@ -212,7 +213,7 @@ func ( self *WDA ) create_session( bundle string ) ( string ) {
   return res.Get("sessionId").String()
 }
 
-func (self *WDA) clickAt( x int, y int ) (string) {
+func (self *WDA) clickAt( x int, y int ) {
     json := fmt.Sprintf( `{
         "actions":[
             {
@@ -224,13 +225,39 @@ func (self *WDA) clickAt( x int, y int ) (string) {
             }
         ]
     }`, x, y )
-    resp, _ := http.Post( self.base + "/session/" + self.sessionId + "/wda/touch/perform", "application/json", strings.NewReader( json ) )
-    res := resp_to_str( resp )
-    log.Info( "response " + res )
-    return res    
+    self.sessionCall( "/wda/touch/perform", json )
 }
 
-func (self *WDA) hardPress( x int, y int ) (string) {
+func (self *WDA) sessionCall( url string, json string ) uj.JNode {
+    fullUrl := self.base + "/session/" + self.sessionId + url
+    fmt.Printf("Posting to %s\n", fullUrl )
+    
+    resp, _ := http.Post(
+        fullUrl,
+        "application/json",
+        strings.NewReader( json ),
+    )
+    
+    val := resp_to_val( resp )
+    val.Dump()
+    err := val.Get("error")
+    if err != nil {
+        errText := err.String()
+        if errText == "invalid session id" {
+            fmt.Printf("Invalid session at first; repeating call\n")
+            self.ensureSession()
+            resp, _ = http.Post(
+                self.base + "/session/" + self.sessionId + url,
+                "application/json",
+                strings.NewReader( json ),
+            )
+        }
+    }
+    
+    return val
+}
+
+func (self *WDA) hardPress( x int, y int ) {
   log.Info( "Hard Press:", x, y )
     json := fmt.Sprintf( `{
         "actions":[
@@ -254,13 +281,10 @@ func (self *WDA) hardPress( x int, y int ) (string) {
             }
         ]
     }`, x, y )
-    resp, _ := http.Post( self.base + "/session/" + self.sessionId + "/wda/touch/perform", "application/json", strings.NewReader( json ) )
-    res := resp_to_str( resp )
-    log.Info( "response " + res )
-    return res    
+    self.sessionCall( "/wda/touch/perform", json )
 }
 
-func (self *WDA) longPress( x int, y int ) (string) {
+func (self *WDA) longPress( x int, y int ) {
     log.Info( "Long Press:", x, y )
     json := fmt.Sprintf( `{
     "actions": [
@@ -283,20 +307,35 @@ func (self *WDA) longPress( x int, y int ) (string) {
       }
     ]
     }`, x, y )
-    resp, _ := http.Post( self.base + "/session/" + self.sessionId + "/wda/touch/perform", "application/json", strings.NewReader( json ) )
-    res := resp_to_str( resp )
-    log.Info( "response " + res )
-    return res
+    
+    self.sessionCall( "/wda/touch/perform", json )
 }
 
 func (self *WDA) home() (string) {
-    resp, _ := http.Post( self.base + "/wda/homescreen", "application/json", strings.NewReader( "{}" ) )
-    res := resp_to_str( resp )
-    log.Info( "response " + res )
-    return res    
+    http.Post( self.base + "/wda/homescreen", "application/json", strings.NewReader( "{}" ) )
+    return ""  
 }
 
-func ( self *WDA ) swipe( x1 int, y1 int, x2 int, y2 int ) ( string ) {
+func (self *WDA) keys( codes []int ) {
+    strArr := []string{}
+    for _, code := range codes {
+        if code >= 97 && code <= 122 {
+            strArr = append( strArr, fmt.Sprintf("\"%c\"", rune( code ) ) )
+        } else {
+            strArr = append( strArr, fmt.Sprintf("\"\\u%04x\"", code ) )
+        }
+    }
+    
+    json := fmt.Sprintf(`{
+        "value": [%s]
+    }`, strings.Join( strArr, "," ) )
+    
+    log.Info( "sending " + json )
+    
+    self.sessionCall( "/wda/keys", json )
+}
+
+func ( self *WDA ) swipe( x1 int, y1 int, x2 int, y2 int ) {
     log.Info( "Swiping:", x1, y1, x2, y2 )
     json := fmt.Sprintf( `{
     "actions": [
@@ -326,18 +365,12 @@ func ( self *WDA ) swipe( x1 int, y1 int, x2 int, y2 int ) ( string ) {
       }
     ]
     }`, x1, y1, x2, y2 )
-    resp, _ := http.Post( self.base + "/session/" + self.sessionId + "/wda/touch/perform", "application/json", strings.NewReader( json ) )
-    res := resp_to_str( resp )
-    log.Info( "response " + res )
-    return res
+    
+    self.sessionCall( "/wda/touch/perform", json )
 }
 
 func (self *WDA) ElClick( elId string ) {
-    http.Post(
-        self.base + "/session/" + self.sessionId + "/element/" + elId + "/click",
-        "application/json",
-        strings.NewReader( "{}" ),
-        )
+    self.sessionCall( "/element/" + elId + "/click", "{}" )
 }
 
 func (self *WDA) ElForceTouch( elId string, pressure int ) {
@@ -346,14 +379,7 @@ func (self *WDA) ElForceTouch( elId string, pressure int ) {
         "pressure": %d
     }`, pressure )
     
-    resp, _ := http.Post(
-        self.base + "/session/" + self.sessionId + "/wda/element/" + elId + "/forceTouch",
-        "application/json",
-        strings.NewReader( jsonIn ),
-        )
-    
-    json := resp_to_str( resp )
-    fmt.Println( json )
+    self.sessionCall( "/wda/element/" + elId + "/forceTouch", jsonIn )
 }
 
 func (self *WDA) ElByName( elName string ) string {
@@ -362,16 +388,25 @@ func (self *WDA) ElByName( elName string ) string {
         "value": "%s"
     }`, elName )
     
-    resp, _ := http.Post(
-        self.base + "/session/" + self.sessionId + "/element", "application/json",
-        strings.NewReader( jsonIn ),
-        )
-    
-    json := resp_to_str( resp )
+    resp := self.sessionCall( "/element", jsonIn )
+        
     //fmt.Println( json )
     
-    root, _ := uj.Parse( []byte(json) )
-    elNode := root.Get("value").Get("ELEMENT")
+    for i:=0; i<5; i++ {
+        if resp != nil {
+            break
+        }
+        
+        fmt.Printf("null response attempting to find element named %s\n", elName )
+        time.Sleep( time.Second * 1 )
+        resp = self.sessionCall( "/element", jsonIn )
+        //source := self.Source()
+        //fmt.Printf("page source:%s\n", source )
+        //panic("err")
+        //}
+    }
+    
+    elNode := resp.Get("ELEMENT")
     if elNode == nil { return "" }
     return elNode.String()
 }
@@ -389,6 +424,18 @@ func (self *WDA) WindowSize() (int,int) {
     return wid,heg
 }
 
+func (self *WDA) Source() string {
+    resp, _ := http.Get( self.base + "/source" )
+    
+    val := resp_to_val( resp )
+    
+    xmlSource := val.String()
+    
+    xmlSource = strings.ReplaceAll( xmlSource, "\\n", "\n" )
+    
+    return xmlSource
+}
+
 func (self *WDA) OpenControlCenter() {
     width, height := self.WindowSize()
     
@@ -399,10 +446,13 @@ func (self *WDA) OpenControlCenter() {
 
 func (self *WDA) StartBroadcastStream( appName string ) {
   self.OpenControlCenter()
+  time.Sleep( time.Second * 2 )
   
   devEl := self.ElByName( "Screen Recording" )
   
   self.ElForceTouch( devEl, 2000 )
+  
+  time.Sleep( time.Second * 2 )
   
   appEl := self.ElByName( appName )
   self.ElClick( appEl )

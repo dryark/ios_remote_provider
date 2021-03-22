@@ -23,6 +23,7 @@ type Config struct {
     xcPath     string
     https      bool
     selfSigned bool
+    wdaPath    string
 }
 
 func GetStr( root uj.JNode, path string ) string {
@@ -62,6 +63,7 @@ func NewConfig( configPath string, defaultsPath string ) (*Config) {
     config.xcPath     = GetStr(  root, "wdaXctestRunFolder" )
     config.https      = GetBool( root, "controlfloor.https" )
     config.selfSigned = GetBool( root, "controlfloor.selfSigned" )
+    config.wdaPath    = GetStr(  root, "bin_paths.wda" )
     
     if config.https {
         if config.selfSigned {

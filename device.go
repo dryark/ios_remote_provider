@@ -3,6 +3,7 @@ package main
 import (
     "fmt"
     "strings"
+    "strconv"
     "sync"
     "time"
     log "github.com/sirupsen/logrus"
@@ -337,4 +338,14 @@ func (self *Device) home() {
 
 func (self *Device) swipe( x1 int, y1 int, x2 int, y2 int ) {
     self.wda.swipe( x1, y1, x2, y2 )
+}
+
+func (self *Device) keys( keys string ) {
+    parts := strings.Split( keys, "," )
+    codes := []int{}
+    for _, key := range parts {
+        code, _ := strconv.Atoi( key )
+        codes = append( codes, code )
+    }
+    self.wda.keys( codes )
 }
