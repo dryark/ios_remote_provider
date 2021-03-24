@@ -301,7 +301,11 @@ func (self *IIFDev) NewSyslogMonitor( handleLogItem func( uj.JNode ) ) {
             "id": self.udid,
         },
         stdoutHandler: func( line string, plog *log.Entry ) {
-            if line[0] == '*' {
+            if line == "" {
+		return
+	    }
+
+	    if line[0] == '*' {
                 i:=1
                 for ;i<6;i++ {
                     char := line[i]
