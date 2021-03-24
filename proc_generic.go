@@ -179,6 +179,7 @@ func proc_generic( procTracker ProcTracker, wrapper interface{}, opt *ProcOption
                         proc.cmd.Stop()
                     }
                 case line, _ := <- outStream:
+                    if line == "" { continue }
                     if opt.stdoutHandler != nil {
                         opt.stdoutHandler( line, plog )
                     } else {
