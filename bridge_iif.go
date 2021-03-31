@@ -66,7 +66,7 @@ func (self *IIFBridge) startDetect() {
       }
     },
     onStop: func( interface{} ) {
-      log.Println("devive trigger stopped")
+      log.Println("device trigger stopped")
     },
   }
   proc_generic( self.procTracker, nil, &o )

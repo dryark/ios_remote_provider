@@ -13,6 +13,7 @@ import (
     "os"
     "strconv"
     "sync"
+    "time"
     "reflect"
     log "github.com/sirupsen/logrus"
     uj "github.com/nanoscopic/ujsonin/v2/mod"
@@ -34,7 +35,7 @@ type ControlFloor struct {
     selfSigned bool
 }
 
-func NewControlFloor( config *Config ) (*ControlFloor) {
+func NewControlFloor( config *Config ) (*ControlFloor, chan bool) {
     jar, err := cookiejar.New(&cookiejar.Options{})
     if err != nil {
         panic( err )
@@ -81,16 +82,41 @@ func NewControlFloor( config *Config ) (*ControlFloor) {
         self.wsBase = "ws://" + config.cfHost
     }
     
-    success := self.login()
-    if success {
-        fmt.Println("Logged in to control floor")
-    } else {
-        fmt.Println("Could not login to control floor")
-    }
+    stopCf := make( chan bool )
     
-    self.openWebsocket()
+    go func() {
+        exit := false
+        delayed := false
+        for {
+            select {
+              case <- stopCf:
+                exit = true
+                break
+              default:
+            }
+            if exit { break }
+            
+            success := self.login()
+            if success {
+                fmt.Println("Logged in to control floor")
+            } else {
+                fmt.Println("Could not login to control floor")
+                fmt.Println("Waiting 10 seconds to retry...")
+                time.Sleep( time.Second * 10 )
+                fmt.Println("trying again\n")
+                delayed = true
+                continue
+            }
+            
+            if delayed {
+                self.DevTracker.cfReady()
+            }
+            
+            self.openWebsocket()
+        }
+    }()
     
-    return &self
+    return &self, stopCf
 }
 
 type CFResponse interface {
@@ -194,94 +220,93 @@ func ( self *ControlFloor ) openWebsocket() {
     // There is only a single websocket connection between a provider and controlfloor
     // As a result, all messages sent here ought to be small, because if they aren't
     // other messages will be delayed being received and some action started.
-    go func() {
-        for {
-            t, msg, err := conn.ReadMessage()
-            if err != nil {
-                fmt.Printf("Error reading from ws\n")
-                break
-            }
-            if t == ws.TextMessage {
-                //tMsg := string( msg )
-                b1 := []byte{ msg[0] }
-                if string(b1) == "{" {
-                    root, _ := uj.Parse( msg )
-                    id := root.Get("id").Int()
-                    mType := root.Get("type").String()
-                    if mType == "ping" {
-                        respondChan <- &CFR_Pong{ id: id, text: "pong" }
-                    } else if mType == "click" {
-                        udid := root.Get("udid").String()
-                        x := root.Get("x").Int()
-                        y := root.Get("y").Int()
-                        go func() {
-                            dev := self.DevTracker.getDevice( udid )
-                            if dev != nil {
-                                dev.clickAt( x, y )
-                            }
-                        } ()
-                    } else if mType == "hardPress" {
-                        udid := root.Get("udid").String()
-                        x := root.Get("x").Int()
-                        y := root.Get("y").Int()
-                        go func() {
-                            dev := self.DevTracker.getDevice( udid )
-                            if dev != nil {
-                                dev.hardPress( x, y )
-                            }
-                        } ()
-                    } else if mType == "longPress" {
-                        udid := root.Get("udid").String()
-                        x := root.Get("x").Int()
-                        y := root.Get("y").Int()
-                        go func() {
-                            dev := self.DevTracker.getDevice( udid )
-                            if dev != nil {
-                                dev.longPress( x, y )
-                            }
-                        } ()
-                    } else if mType == "home" {
-                        udid := root.Get("udid").String()
-                        go func() {
-                            dev := self.DevTracker.getDevice( udid )
-                            if dev != nil {
-                                dev.home()
-                            }
-                        } ()
-                    } else if mType == "swipe" {
-                        udid := root.Get("udid").String()
-                        x1 := root.Get("x1").Int()
-                        y1 := root.Get("y1").Int()
-                        x2 := root.Get("x2").Int()
-                        y2 := root.Get("y2").Int()
-                        go func() {
-                            dev := self.DevTracker.getDevice( udid )
-                            if dev != nil {
-                                dev.swipe( x1, y1, x2, y2 )
-                            }
-                        } ()
-                    } else if mType == "keys" {
-                        udid := root.Get("udid").String()
-                        keys := root.Get("keys").String()
-                        go func() {
-                            dev := self.DevTracker.getDevice( udid )
-                            if dev != nil {
-                                dev.keys( keys )
-                            }
-                        } ()
-                    } else if mType == "startStream" {
-                        udid := root.Get("udid").String()
-                        fmt.Printf("Got request to start video stream for %s\n", udid )
-                        go func() { self.startVidStream( udid ) }()
-                    } else if mType == "stopStream" {
-                        udid := root.Get("udid").String()
-                        go func() { self.stopVidStream( udid ) }()
-                    }
+    for {
+        t, msg, err := conn.ReadMessage()
+        if err != nil {
+            fmt.Printf("Error reading from ws\n")
+            break
+        }
+        if t == ws.TextMessage {
+            //tMsg := string( msg )
+            b1 := []byte{ msg[0] }
+            if string(b1) == "{" {
+                root, _ := uj.Parse( msg )
+                id := root.Get("id").Int()
+                mType := root.Get("type").String()
+                if mType == "ping" {
+                    respondChan <- &CFR_Pong{ id: id, text: "pong" }
+                } else if mType == "click" {
+                    udid := root.Get("udid").String()
+                    x := root.Get("x").Int()
+                    y := root.Get("y").Int()
+                    go func() {
+                        dev := self.DevTracker.getDevice( udid )
+                        if dev != nil {
+                            dev.clickAt( x, y )
+                        }
+                    } ()
+                } else if mType == "hardPress" {
+                    udid := root.Get("udid").String()
+                    x := root.Get("x").Int()
+                    y := root.Get("y").Int()
+                    go func() {
+                        dev := self.DevTracker.getDevice( udid )
+                        if dev != nil {
+                            dev.hardPress( x, y )
+                        }
+                    } ()
+                } else if mType == "longPress" {
+                    udid := root.Get("udid").String()
+                    x := root.Get("x").Int()
+                    y := root.Get("y").Int()
+                    go func() {
+                        dev := self.DevTracker.getDevice( udid )
+                        if dev != nil {
+                            dev.longPress( x, y )
+                        }
+                    } ()
+                } else if mType == "home" {
+                    udid := root.Get("udid").String()
+                    go func() {
+                        dev := self.DevTracker.getDevice( udid )
+                        if dev != nil {
+                            dev.home()
+                        }
+                    } ()
+                } else if mType == "swipe" {
+                    udid := root.Get("udid").String()
+                    x1 := root.Get("x1").Int()
+                    y1 := root.Get("y1").Int()
+                    x2 := root.Get("x2").Int()
+                    y2 := root.Get("y2").Int()
+                    go func() {
+                        dev := self.DevTracker.getDevice( udid )
+                        if dev != nil {
+                            dev.swipe( x1, y1, x2, y2 )
+                        }
+                    } ()
+                } else if mType == "keys" {
+                    udid := root.Get("udid").String()
+                    keys := root.Get("keys").String()
+                    go func() {
+                        dev := self.DevTracker.getDevice( udid )
+                        if dev != nil {
+                            dev.keys( keys )
+                        }
+                    } ()
+                } else if mType == "startStream" {
+                    udid := root.Get("udid").String()
+                    fmt.Printf("Got request to start video stream for %s\n", udid )
+                    go func() { self.startVidStream( udid ) }()
+                } else if mType == "stopStream" {
+                    udid := root.Get("udid").String()
+                    go func() { self.stopVidStream( udid ) }()
                 }
             }
         }
-        doneChan <- true
-    }()    
+    }
+    
+    doneChan <- true
 }
 
 func loadCFConfig( configPath string ) (uj.JNode) {
@@ -428,7 +453,9 @@ func (self *ControlFloor) login() (bool) {
         } else {
           fmt.Printf("Err type:%s - %s\n", reflect.TypeOf(err), err )
         }
-        panic( err )
+        self.lock.Unlock()
+        return false
+        //panic( err )
     }
     
     success := false

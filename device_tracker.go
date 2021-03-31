@@ -19,13 +19,16 @@ type DeviceTracker struct {
     process    map[string] *GenericProc
     lock       *sync.Mutex
     cf         *ControlFloor
+    cfStop     chan bool
     bridge     BridgeRoot
+    pendingDevs [] BridgeDev
 }
 
 func NewDeviceTracker( config *Config, detect bool ) (*DeviceTracker) {
     var cf *ControlFloor
+    var cfStop chan bool
     if detect {
-      cf = NewControlFloor( config )
+      cf, cfStop = NewControlFloor( config )
     }
     self := &DeviceTracker{
         process: make( map[string] *GenericProc ),
@@ -36,7 +39,8 @@ func NewDeviceTracker( config *Config, detect bool ) (*DeviceTracker) {
         localPorts: []int{
             8102, 8103, 8104, 8105, 8106, 8107, 8108, 8109, 8110, 8111, 8112, 8113, 8114, 8115, 8116,
         },
-        cf: cf,        
+        cf: cf,
+        cfStop: cfStop,
     }
     self.bridge = NewIIFBridge(
         func( dev BridgeDev ) ProcTracker { return self.onDeviceConnect1( dev ) },
@@ -75,8 +79,24 @@ func (self *DeviceTracker) getDevice( udid string ) (*Device) {
     return self.DevMap[ udid ]
 }
 
+func (self *DeviceTracker) cfReady() {
+    fmt.Println("Starting delayed devices:")
+    for _, bdev := range self.pendingDevs {
+        fmt.Printf("Delayed device - udid: %s\n", bdev.getUdid() )
+        self.onDeviceConnect1( bdev )
+    }
+    self.pendingDevs = []BridgeDev{}
+}
+
 func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
     udid := bdev.getUdid()
+    
+    if !self.cf.ready {
+        self.pendingDevs = append( self.pendingDevs, bdev )
+        fmt.Printf("Device attached, but ControlFloor not ready.\n  udid=%s\n", udid )
+        return nil
+    }
+    
     fmt.Printf("udid: %s\n", udid)
     //dev := self.DevMap[ udid ]
     
@@ -87,9 +107,9 @@ func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
         "main-screen-scale",
     } )
     
-    width, _ := strconv.Atoi( mgInfo["main-screen-width"] )
+    width,  _ := strconv.Atoi( mgInfo["main-screen-width"] )
     height, _ := strconv.Atoi( mgInfo["main-screen-height"] )
-    scale, _ := strconv.Atoi( mgInfo["main-screen-scale"] )
+    scale,  _ := strconv.Atoi( mgInfo["main-screen-scale"] )
                     
     self.cf.notifyDeviceExists( udid, width, height, width/scale, height/scale )
     dev := self.onDeviceConnect( udid, bdev )
@@ -131,6 +151,8 @@ func (self *DeviceTracker) shutdown() {
         } ).Info("Shutdown device")
         dev.shutdown()
     }
+    
+    go func() { self.cfStop <- true }()
 }
 
 func (self *DeviceTracker) onDeviceConnect( uuid string, bdev BridgeDev ) (*Device){
