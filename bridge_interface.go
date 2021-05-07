@@ -41,9 +41,10 @@ type BridgeDev interface {
   tunnel( pairs []TunPair )
   info( names []string ) map[string]string
   gestalt( names []string ) map[string]string
+  gestaltnode( names []string ) map[string]uj.JNode
   ps() []iProc
   screenshot() Screenshot
-  wda( name string, port int, onStart func(), onStop func(interface{}) )
+  wda( port int, onStart func(), onStop func(interface{}) )
   destroy()
   setProcTracker( procTracker ProcTracker )
   NewBackupVideo( port int, onStop func( interface{} ) ) ( *BackupVideo )

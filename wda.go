@@ -1,16 +1,10 @@
 package main
 
 import (
-    //"bytes"
     "fmt"
     "io/ioutil"
     "net/http"
-    "os"
-    //"os/exec"
     "strings"
-    "path/filepath"
-    "regexp"
-    "strconv"
     "time"
     log "github.com/sirupsen/logrus"
     uj "github.com/nanoscopic/ujsonin/v2/mod"
@@ -51,14 +45,7 @@ func (self *WDA) start() {
     }
     self.dev.bridge.tunnel( pairs )
     
-    xctestrunFile := findXctestrun("./bin/wda")
-    if xctestrunFile == "" {
-        log.Fatal("Could not find xctestrun of sufficient version")
-        return
-    }
-    
     self.dev.bridge.wda(
-        xctestrunFile,
         self.localhostPort,
         func() { // onStart
             log.WithFields( log.Fields{
@@ -86,75 +73,6 @@ func (self *WDA) stop() {
         self.wdaProc.Kill()
         self.wdaProc = nil
     }
-}
-
-func findXctestrun(folder string) string {
-    iosversion := ""
-    
-    if _, err := os.Stat( folder ); os.IsNotExist( err ) {
-        log.Warn( fmt.Sprintf( "Directory %s does not exist; WDA not built? Run `make wda`\n", folder ) )
-        return ""
-    }
-    
-    folder, _ = filepath.EvalSymlinks( folder )
-    
-    var files []string
-    err := filepath.Walk(folder, func( file string, info os.FileInfo, err error ) error {
-        if err != nil { return nil }
-        if info.IsDir() && folder != file {
-            //fmt.Printf("skipping %s\n", file)
-            return filepath.SkipDir
-        }
-        files = append( files, file )
-        return nil
-    } )
-    if err != nil {
-        log.Fatal(err)
-    }
-    
-    versionMatch := false
-    var findMajor int64 = 0
-    var findMinor int64 = 0
-    var curMajor int64 = 100
-    var curMinor int64 = 100
-    if iosversion != "" {
-        parts := strings.Split( iosversion, "." )
-        findMajor, _ = strconv.ParseInt( parts[0], 10, 64 )
-        findMinor, _ = strconv.ParseInt( parts[1], 10, 64 )
-        versionMatch = true
-    }
-    
-    xcFile := ""
-    for _, file := range files {
-        fmt.Printf("Found file %s\n", file )
-        if ! strings.HasSuffix(file, ".xctestrun") {
-            continue
-        }
-        
-        if ! versionMatch {
-            xcFile = file
-            break
-        }
-        
-        r := regexp.MustCompile( `iphoneos([0-9]+)\.([0-9]+)` )
-        fileParts := r.FindSubmatch( []byte( file ) )
-        fileMajor, _ := strconv.ParseInt( string(fileParts[1]), 10, 64 )
-        fileMinor, _ := strconv.ParseInt( string(fileParts[2]), 10, 64 )
-        
-        // Find the smallest file version greater than or equal to the ios version
-        // Golang line continuation for long boolean expressions is horrible. :(
-        
-        // Checked file version smaller than current file version
-        // &&
-        // Checked file version greater or equal to ios version    
-        if ( fileMajor < curMajor  || ( fileMajor == curMajor  && fileMinor <= curMinor  ) ) &&
-           ( fileMajor > findMajor || ( fileMajor == findMajor && fileMinor >= findMinor ) ) {
-              curMajor = fileMajor
-              curMinor = fileMinor
-              xcFile = file
-        }
-    }
-    return xcFile
 }
 
 func (self *WDA) ensureSession() {
@@ -214,7 +132,7 @@ func ( self *WDA ) create_session( bundle string ) ( string ) {
 }
 
 func (self *WDA) clickAt( x int, y int ) {
-    json := fmt.Sprintf( `{
+    /*json := fmt.Sprintf( `{
         "actions":[
             {
                 "action":"tap",
@@ -225,10 +143,22 @@ func (self *WDA) clickAt( x int, y int ) {
             }
         ]
     }`, x, y )
-    self.sessionCall( "/wda/touch/perform", json )
+    self.sessionCall( "/wda/touch/perform", json )*/
+    json := fmt.Sprintf( `{
+        "x":%d,
+        "y":%d
+    }`, x, y )
+    http.Post( self.base + "/wda/tap", "application/json", strings.NewReader( json ) )
 }
 
 func (self *WDA) sessionCall( url string, json string ) uj.JNode {
+    var err uj.JNode
+    var val uj.JNode
+    
+    if self.sessionId == "" {
+      self.ensureSession()
+    }
+    
     fullUrl := self.base + "/session/" + self.sessionId + url
     fmt.Printf("Posting to %s\n", fullUrl )
     
@@ -238,19 +168,21 @@ func (self *WDA) sessionCall( url string, json string ) uj.JNode {
         strings.NewReader( json ),
     )
     
-    val := resp_to_val( resp )
+    val = resp_to_val( resp )
     val.Dump()
-    err := val.Get("error")
+    err = val.Get("error")
+    
     if err != nil {
         errText := err.String()
         if errText == "invalid session id" {
             fmt.Printf("Invalid session at first; repeating call\n")
             self.ensureSession()
-            resp, _ = http.Post(
+            resp, _ := http.Post(
                 self.base + "/session/" + self.sessionId + url,
                 "application/json",
                 strings.NewReader( json ),
             )
+            val = resp_to_val( resp )
         }
     }
     
@@ -266,13 +198,13 @@ func (self *WDA) hardPress( x int, y int ) {
               "options": {
                 "x":%d,
                 "y":%d,
-                "pressure":2000
+                "pressure":3000
               }
             },
             {
               "action":"wait",
               "options": {
-                "ms": 100
+                "ms": 700
               }
             },
             {

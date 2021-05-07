@@ -160,6 +160,7 @@ func (self *IIFDev) GetPid( appname string ) int {
     return 0
   }
   
+  json = []byte( strings.ReplaceAll( string( json ), "i16.", "" ) );
   root, _ := uj.Parse( json )
   pidNode := root.Get("pid")
   if pidNode == nil { return 0 }
@@ -238,45 +239,34 @@ func (self *IIFDev) gestalt( names []string ) map[string]string {
   return mapped
 }
 
+func (self *IIFDev) gestaltnode( names []string ) map[string]uj.JNode {
+  mapped := make( map[string]uj.JNode )
+  args := []string{
+    "mg",
+    "-json",
+    "-id", self.udid,
+  }
+  args = append( args, names... )
+  fmt.Printf("Running %s %s\n", self.bridge.cli, args );
+  json, _ := exec.Command( self.bridge.cli, args... ).Output()
+  fmt.Printf("json:%s\n",json)
+  root, _ := uj.Parse( json )
+  for _,name := range names {
+    node := root.Get(name)
+    if node != nil {
+      mapped[name] = node
+    }
+  }
+  
+  return mapped
+}
+
 func (self *IIFDev) ps() []iProc {
     return []iProc{}
 }
 
 func (self *IIFDev) screenshot() Screenshot {
     return Screenshot{}
-}
-
-func (self *IIFDev) wdanew( xctestPath string, onStart func(), onStop func( interface{} ) ) {
-    o := ProcOptions{
-        procName: "xctest",
-        binary: self.bridge.cli,
-        args: []string{
-            "xctest",
-            xctestPath,
-        },
-        stdoutHandler: func( line string, plog *log.Entry ) {
-            //if debug {
-            //    fmt.Printf("[WDA] %s\n", line)
-            //}
-            if strings.HasPrefix(line, "Test Case '-[UITestingUITests testRunner]' started") {
-                onStart()
-            }
-            if strings.Contains( line, "configuration is unsupported" ) {
-                plog.Println( line )
-            }
-        },
-        stderrHandler: func( line string, plog *log.Entry ) {
-            if strings.Contains( line, "configuration is unsupported" ) {
-                plog.Println( line )
-            }
-            //plog.Println( line )
-        },
-        onStop: func( wrapper interface{} ) {
-            onStop( wrapper )
-        },
-    }
-      
-    proc_generic( self.procTracker, nil, &o )
 }
 
 type BackupVideo struct {
@@ -427,7 +417,7 @@ func (self *BackupVideo) GetFrame() []byte {
     return msg.Body
 }
 
-func (self *IIFDev) wda( xctestPath string, port int, onStart func(), onStop func(interface{}) ) {
+func (self *IIFDev) wda( port int, onStart func(), onStop func(interface{}) ) {
   f, err := os.OpenFile("wda.log",
       os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
   if err != nil {
@@ -438,19 +428,13 @@ func (self *IIFDev) wda( xctestPath string, port int, onStart func(), onStop fun
 	
   o := ProcOptions {
       procName: "wda",
-      binary: "xcodebuild",
-      //startDir: "./bin/wda",
+      binary: self.bridge.cli,
       args: []string{
-          "test-without-building",
-          "-xctestrun", xctestPath,
-          "-destination", "id="+self.udid,
-      },
-      startFields: log.Fields{
-          "testrun": xctestPath,
+          "wda",
+          "id=", self.udid,
       },
       stdoutHandler: func( line string, plog *log.Entry ) {
           if strings.HasPrefix(line, "Test Case '-[UITestingUITests testRunner]' started") {
-              //plog.Println("[WDA] successfully started")
               plog.WithFields( log.Fields{
                   "type": "wda_start",
                   "uuid": censorUuid(self.udid),

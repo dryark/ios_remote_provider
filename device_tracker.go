@@ -2,7 +2,6 @@ package main
 
 import (
     "fmt"
-    "strconv"
     "sync"
     log "github.com/sirupsen/logrus"
 )
@@ -101,17 +100,18 @@ func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
     //dev := self.DevMap[ udid ]
     
     //devConf := self.Config.devs[ udid ]
-    mgInfo := bdev.gestalt( []string{
+    mgInfo := bdev.gestaltnode( []string{
+        "AvailableDisplayZoomSizes",
         "main-screen-width",
         "main-screen-height",
-        "main-screen-scale",
     } )
+    width := mgInfo["main-screen-width"].Int()
+    height := mgInfo["main-screen-height"].Int()
+    sizeArr := mgInfo["AvailableDisplayZoomSizes"].Get("default") // zoomed also available
+    clickWidth := sizeArr.GetAt(1).Int()
+    clickHeight := sizeArr.GetAt(3).Int()
     
-    width,  _ := strconv.Atoi( mgInfo["main-screen-width"] )
-    height, _ := strconv.Atoi( mgInfo["main-screen-height"] )
-    scale,  _ := strconv.Atoi( mgInfo["main-screen-scale"] )
-                    
-    self.cf.notifyDeviceExists( udid, width, height, width/scale, height/scale )
+    self.cf.notifyDeviceExists( udid, width, height, clickWidth, clickHeight )
     dev := self.onDeviceConnect( udid, bdev )
     self.cf.notifyDeviceInfo( dev )
     dev.startEventLoop()
