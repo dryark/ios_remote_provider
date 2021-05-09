@@ -12,6 +12,9 @@ import (
 
 type CDevice struct {
     udid string
+    uiWidth int
+    uiHeight int
+    controlCenterMethod string
 }
 
 type Config struct {
@@ -86,9 +89,27 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
     if devsNode != nil {
         devsNode.ForEach( func( devNode uj.JNode ) {
             udid := devNode.Get("udid").String()
-                        
+            uiWidth := 0
+            uiHeight := 0
+            controlCenterMethod := "bottomUp"
+            widthNode := devNode.Get("uiWidth")
+            if widthNode != nil {
+              uiWidth = widthNode.Int()
+            }
+            heightNode := devNode.Get("uiHeight")
+            if heightNode != nil {
+              uiHeight = heightNode.Int()
+            }
+            methodNode := devNode.Get("controlCenterMethod")
+            if methodNode != nil {
+              controlCenterMethod = methodNode.String()
+            }
+            
             dev := CDevice{
                 udid: udid,
+                uiWidth: uiWidth,
+                uiHeight: uiHeight,
+                controlCenterMethod: controlCenterMethod,
             }
             devs[ udid ] = dev
         } )

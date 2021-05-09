@@ -45,6 +45,7 @@ type Device struct {
     wda         *WDA
     devTracker  *DeviceTracker
     config      *Config
+    devConfig   *CDevice
     cf          *ControlFloor
     info        map[string] string
     vidStreamer VideoStreamer
@@ -72,6 +73,9 @@ func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev Bri
         EventCh:    make( chan DevEvent ),
         BackupCh:   make( chan BackupEvent ),
         bridge:     bdev,
+    }
+    if devConfig, ok := config.devs[udid]; ok {
+        dev.devConfig = &devConfig
     }
     return &dev
 }
@@ -235,11 +239,16 @@ func (self *Device) enableVideo() {
     
     self.wda.ensureSession()
     
+    controlCenterMethod := "bottomUp"
+    if self.devConfig != nil {
+        controlCenterMethod = self.devConfig.controlCenterMethod
+    }
+    
     // if video app is not running, check if it is installed
     installInfo := self.bridge.AppInfo( "vidtest2" )
     // if installed, start it
     if installInfo != nil {
-        self.wda.StartBroadcastStream( "vidtest2" )
+        self.wda.StartBroadcastStream( "vidtest2", controlCenterMethod )
         self.vidMode = VID_APP
         return
     }
@@ -248,7 +257,7 @@ func (self *Device) enableVideo() {
     // install it, then start it
     success := self.bridge.InstallApp( "vidtest.xcarchive/Products/Applications/vidtest.app" )
     if success {
-        self.wda.StartBroadcastStream( "vidtest2" )
+        self.wda.StartBroadcastStream( "vidtest2", controlCenterMethod )
         self.vidMode = VID_APP
         return
     }

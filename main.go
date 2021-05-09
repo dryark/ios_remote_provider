@@ -94,7 +94,7 @@ func runClick( cmd *uc.Cmd ) {
     <- startChan
     
     wda.ensureSession()
-    wda.OpenControlCenter()
+    wda.OpenControlCenter("bottomUp")
     recBtn := wda.ElByName( "Screen Recording" )
     fmt.Printf("recBtn:%s\n", recBtn )
     wda.ElForceTouch( recBtn, 2000 )

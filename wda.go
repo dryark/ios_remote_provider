@@ -368,16 +368,21 @@ func (self *WDA) Source() string {
     return xmlSource
 }
 
-func (self *WDA) OpenControlCenter() {
+func (self *WDA) OpenControlCenter( controlCenterMethod string ) {
     width, height := self.WindowSize()
     
-    midx := width / 2
-    maxy := height - 1
-    self.swipe( midx, maxy, midx, maxy - 100 )
+    if controlCenterMethod == "bottomUp" {
+      midx := width / 2
+      maxy := height - 1
+      self.swipe( midx, maxy, midx, maxy - 100 )
+    } else if controlCenterMethod == "topDown" {
+      maxx := width - 1
+      self.swipe( maxx, 0, maxx, 100 )
+    }    
 }
 
-func (self *WDA) StartBroadcastStream( appName string ) {
-  self.OpenControlCenter()
+func (self *WDA) StartBroadcastStream( appName string, controlCenterMethod string ) {
+  self.OpenControlCenter( controlCenterMethod )
   time.Sleep( time.Second * 2 )
   
   devEl := self.ElByName( "Screen Recording" )

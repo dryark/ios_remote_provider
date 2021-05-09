@@ -8,11 +8,12 @@
         wda: "bin/wda"
     }
     repos: {
-        wda: "https://github.com/appium/WebDriverAgent.git"
+        wda: "https://github.com/nanoscopic/WebDriverAgent.git"
         ujsonin: "https://github.com/nanoscopic/ujsonin.git"
         pbxproj: "https://github.com/kronenthaler/mod-pbxproj"
         iosif: "https://github.com/nanoscopic/iosif.git"
         vidapp: "https://github.com/nanoscopic/ios_video_app.git"
+        goios: "https://github.com/nanoscopic/go-ios.git"
     }
     wda: {
         lib: {

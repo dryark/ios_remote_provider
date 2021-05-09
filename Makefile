@@ -2,10 +2,14 @@
 
 TARGET = main
 
-all: $(TARGET) bin/iosif repos/vidapp
+all: $(TARGET) bin/iosif repos/vidapp bin/go-ios
 
 bin/gojq: repos/ujsonin/versionMarker
 	make -C repos/ujsonin gojq && touch bin/gojq
+
+bin/go-ios: repos/go-ios/versionMarker
+	cd repos/go-ios && go build .
+	touch bin/go-ios
 
 config.mk: config.json bin/gojq
 	@rm -rf config.mk
@@ -32,6 +36,10 @@ clean:
 wdaclean:
 	$(RM) -rf repos/WebDriverAgent/build
 
+repos/WebDriverAgent/versionMarker: repos/WebDriverAgent repos/versionMarkers/WebDriverAgent
+	cd repos/WebDriverAgent && git pull
+	touch repos/WebDriverAgent/versionMarker
+
 repos/WebDriverAgent:
 	git clone $(config_repos_wda) repos/WebDriverAgent
 
@@ -45,6 +53,7 @@ repos/ujsonin:
 
 bin/iosif: repos/iosif/versionMarker
 	make -C repos/iosif
+	touch bin/iosif
 
 repos/iosif/versionMarker: repos/iosif repos/versionMarkers/iosif
 	cd repos/iosif && git pull
@@ -55,6 +64,13 @@ repos/iosif:
 
 repos/vidapp:
 	git clone $(config_repos_vidapp) repos/vidapp
+
+repos/go-ios/versionMarker: repos/go-ios repos/versionMarkers/go-ios
+	cd repos/go-ios && git pull
+	touch repos/go-ios/versionMarker
+
+repos/go-ios:
+	git clone $(config_repos_goios) repos/go-ios
 
 vidtest_unsigned.xcarchive:
 	xcodebuild -project repos/vidapp/vidtest/vidtest.xcodeproj -scheme vidtest archive -archivePath ./vidtest.xcarchive CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
@@ -96,7 +112,7 @@ python/deps_installed: repos/mod-pbxproj
 	pip3 install -r ./python/requires.txt
 	touch python/deps_installed
 
-repos/WebDriverAgent/build: repos/WebDriverAgent repos/mod-pbxproj config.json python/deps_installed bin/gojq
+repos/WebDriverAgent/build: repos/WebDriverAgent/versionMarker repos/mod-pbxproj config.json python/deps_installed bin/gojq
 	@if [ -e repos/WebDriverAgent/build ]; then rm -rf repos/WebDriverAgent/build; fi;
 	mkdir repos/WebDriverAgent/build
 	@./bin/gojq overlay -file1 default.json -file2 config.json -json > muxed.json

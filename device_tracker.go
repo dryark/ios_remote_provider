@@ -99,7 +99,8 @@ func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
     fmt.Printf("udid: %s\n", udid)
     //dev := self.DevMap[ udid ]
     
-    //devConf := self.Config.devs[ udid ]
+    _, devConfOk := self.Config.devs[udid]
+        
     mgInfo := bdev.gestaltnode( []string{
         "AvailableDisplayZoomSizes",
         "main-screen-width",
@@ -107,10 +108,25 @@ func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
     } )
     width := mgInfo["main-screen-width"].Int()
     height := mgInfo["main-screen-height"].Int()
-    sizeArr := mgInfo["AvailableDisplayZoomSizes"].Get("default") // zoomed also available
-    clickWidth := sizeArr.GetAt(1).Int()
-    clickHeight := sizeArr.GetAt(3).Int()
     
+    var clickWidth int
+    var clickHeight int
+    
+    var devConf *CDevice
+    if devConfOk {
+      devConfOb := self.Config.devs[udid]
+      devConf = &devConfOb
+    }
+    if devConfOk && devConf.uiWidth != 0 {
+        devConf := self.Config.devs[ udid ]
+        clickWidth = devConf.uiWidth
+        clickHeight = devConf.uiHeight
+    } else {
+        sizeArr := mgInfo["AvailableDisplayZoomSizes"].Get("default") // zoomed also available
+        clickWidth = sizeArr.GetAt(1).Int()
+        clickHeight = sizeArr.GetAt(3).Int()
+    }
+        
     self.cf.notifyDeviceExists( udid, width, height, clickWidth, clickHeight )
     dev := self.onDeviceConnect( udid, bdev )
     self.cf.notifyDeviceInfo( dev )

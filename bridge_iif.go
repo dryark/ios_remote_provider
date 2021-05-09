@@ -428,13 +428,15 @@ func (self *IIFDev) wda( port int, onStart func(), onStop func(interface{}) ) {
 	
   o := ProcOptions {
       procName: "wda",
-      binary: self.bridge.cli,
+      binary: "bin/go-ios",
       args: []string{
-          "wda",
-          "id=", self.udid,
+          "runwda",
+          "--bundleid", "com.appium.WebDriverAgentRunner.xctrunner",
+          "--testrunnerbundleid", "com.appium.WebDriverAgentRunner.xctrunner",
+          "--xctestconfig", "WebDriverAgentRunner.xctest",
       },
       stdoutHandler: func( line string, plog *log.Entry ) {
-          if strings.HasPrefix(line, "Test Case '-[UITestingUITests testRunner]' started") {
+          if strings.Contains(line, "Test Case '-[UITestingUITests testRunner]' started") {
               plog.WithFields( log.Fields{
                   "type": "wda_start",
                   "uuid": censorUuid(self.udid),
