@@ -18,15 +18,18 @@ type CDevice struct {
 }
 
 type Config struct {
-    iosIfPath  string
-    httpPort   int
-    cfHost     string
-    cfUsername string
-    devs       map [string] CDevice
-    xcPath     string
-    https      bool
-    selfSigned bool
-    wdaPath    string
+    iosIfPath    string
+    httpPort     int
+    cfHost       string
+    cfUsername   string
+    devs         map [string] CDevice
+    xcPath       string
+    https        bool
+    selfSigned   bool
+    wdaPath      string
+    tidevicePath string
+    wdaMethod    string
+    wdaPrefix    string
 }
 
 func GetStr( root uj.JNode, path string ) string {
@@ -54,10 +57,10 @@ func GetInt( root uj.JNode, path string ) int {
     return node.Int()
 }
 
-func NewConfig( configPath string, defaultsPath string ) (*Config) {
+func NewConfig( configPath string, defaultsPath string, calculatedPath string ) (*Config) {
     config := Config{}
     
-    root := loadConfig( configPath, defaultsPath )
+    root := loadConfig( configPath, defaultsPath, calculatedPath )
     
     config.iosIfPath  = GetStr(  root, "bin_paths.iosif" )
     config.httpPort   = GetInt(  root, "port" )
@@ -67,6 +70,14 @@ func NewConfig( configPath string, defaultsPath string ) (*Config) {
     config.https      = GetBool( root, "controlfloor.https" )
     config.selfSigned = GetBool( root, "controlfloor.selfSigned" )
     config.wdaPath    = GetStr(  root, "bin_paths.wda" )
+    config.wdaMethod  = GetStr(  root, "wda.startMethod" )
+    config.wdaPrefix  = GetStr(  root, "wda.bundleIdPrefix" )
+    tideviceNode := root.Get( "tidevice" )
+    if tideviceNode != nil {
+        config.tidevicePath = tideviceNode.String()
+    } else {
+        config.tidevicePath = ""
+    }
     
     if config.https {
         if config.selfSigned {
@@ -75,7 +86,7 @@ func NewConfig( configPath string, defaultsPath string ) (*Config) {
             }
             //http.DefaultTransport.(*http.Transport).ForceAttemptHTTP2 = false
         }
-    } 
+    }
     
     config.devs = readDevs( root )
     
@@ -117,7 +128,8 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
     return devs
 }
 
-func loadConfig( configPath string, defaultsPath string ) (uj.JNode) {
+func loadConfig( configPath string, defaultsPath string, calculatedPath string ) (uj.JNode) {
+    // read in defaults
     fh1, serr1 := os.Stat( defaultsPath )
     if serr1 != nil {
         log.WithFields( log.Fields{
@@ -132,9 +144,9 @@ func loadConfig( configPath string, defaultsPath string ) (uj.JNode) {
     }
     content1, err1 := ioutil.ReadFile( defaultsFile )
     if err1 != nil { log.Fatal( err1 ) }
-  
     defaults, _ := uj.Parse( content1 )
     
+    // read in normal config
     fh, serr := os.Stat( configPath )
     if serr != nil {
         log.WithFields( log.Fields{
@@ -149,10 +161,28 @@ func loadConfig( configPath string, defaultsPath string ) (uj.JNode) {
     }
     content, err := ioutil.ReadFile( configFile )
     if err != nil { log.Fatal( err ) }
-  
     root, _ := uj.Parse( content )
     
     defaults.Overlay( root )
+    
+    if calculatedPath != "" {
+        fh2, serr2 := os.Stat( calculatedPath )
+        if serr2 != nil {
+            log.WithFields( log.Fields{
+                "type":        "err_read_calculated",
+                "error":       serr2,
+                "defaults_path": calculatedPath,
+            } ).Fatal("Could not read specified calculated path")
+        }
+        calculatedFile := calculatedPath
+        switch mode := fh2.Mode(); {
+            case mode.IsDir(): calculatedFile = fmt.Sprintf("%s/default.json", calculatedPath)
+        }
+        content2, err2 := ioutil.ReadFile( calculatedFile )
+        if err2 != nil { log.Fatal( err2 ) }
+        calculated, _ := uj.Parse( content2 )
+        defaults.Overlay( calculated )
+    }
     //defaults.Dump()
     
     return defaults

@@ -43,29 +43,29 @@ func (self *WDA) start() {
     pairs := []TunPair{
         TunPair{ from: self.localhostPort, to: self.onDevicePort },
     }
-    self.dev.bridge.tunnel( pairs )
-    
-    self.dev.bridge.wda(
-        self.localhostPort,
-        func() { // onStart
-            log.WithFields( log.Fields{
-                "type": "wda_start",
-                "udid":  censorUuid(self.udid),
-                "port": self.localhostPort,
-            } ).Info("[WDA] successfully started")
-            if self.startChan != nil {
-                self.startChan <- true
-            }
-            self.dev.EventCh <- DevEvent{
-                action: 1,
-            }
-        },
-        func(interface{}) { // onStop
-            self.dev.EventCh <- DevEvent{
-                action: 2,
-            }
-        },
-    )
+    self.dev.bridge.tunnel( pairs, func() {
+        self.dev.bridge.wda(
+            self.localhostPort,
+            func() { // onStart
+                log.WithFields( log.Fields{
+                    "type": "wda_start",
+                    "udid":  censorUuid(self.udid),
+                    "port": self.localhostPort,
+                } ).Info("[WDA] successfully started")
+                if self.startChan != nil {
+                    self.startChan <- true
+                }
+                self.dev.EventCh <- DevEvent{
+                    action: 1,
+                }
+            },
+            func(interface{}) { // onStop
+                self.dev.EventCh <- DevEvent{
+                    action: 2,
+                }
+            },
+        )
+    } )
 }
 
 func (self *WDA) stop() {

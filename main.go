@@ -17,6 +17,7 @@ func main() {
         uc.OPT("-warn","Use warn log level",uc.FLAG),
         uc.OPT("-config","Config file to use",0),
         uc.OPT("-defaults","Defaults config file to use",0),
+        uc.OPT("-calculated","Path to calculated JSON values",0),
     }
     
     runOpts := append( commonOpts,
@@ -37,7 +38,7 @@ func main() {
 }
 
 func wdaForDev1() (*WDA,*DeviceTracker) {
-    config := NewConfig( "config.json", "default.json" )
+    config := NewConfig( "config.json", "default.json", "calculated.json" )
     
     devs := GetDevs( config )
     dev1 := devs[0]
@@ -112,13 +113,16 @@ func common( cmd *uc.Cmd ) *Config {
     defaultsPath := cmd.Get("-defaults").String()
     if defaultsPath == "" { defaultsPath = "default.json" }
     
+    calculatedPath := cmd.Get("-calculated").String()
+    if calculatedPath == "" { calculatedPath = "calculated.json" }
+    
     setupLog( debug, warn )
     
-    return NewConfig( configPath, defaultsPath )
+    return NewConfig( configPath, defaultsPath, calculatedPath )
 }
 
 func runCleanup( *uc.Cmd ) {
-    config := NewConfig( "config.json", "default.json" )
+    config := NewConfig( "config.json", "default.json", "calculated.json" )
     cleanup_procs( config )    
 }
 

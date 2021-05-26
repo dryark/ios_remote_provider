@@ -121,3 +121,11 @@ repos/WebDriverAgent/build: repos/WebDriverAgent/versionMarker repos/mod-pbxproj
 
 repos/mod-pbxproj:
 	git clone $(config_repos_pbxproj) repos/mod-pbxproj
+
+usetidevice: calculated.json
+
+calculated.json: bin/gojq repos/versionMarkers/calculated_json
+	$(eval TIDEVICE_PKGS_PATH := $(shell pip3 show tidevice | grep Location | cut -c 11-))
+	$(eval TIDEVICE_BIN_PATH := $(shell pip3 show -f tidevice | grep bin/tidevice))
+	@./bin/gojq set -file calculated.json -path tidevice -val $(TIDEVICE_PKGS_PATH)/$(TIDEVICE_BIN_PATH)
+	

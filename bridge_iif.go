@@ -8,7 +8,7 @@ import (
     "os/exec"
     "strings"
     "strconv"
-    "time"
+    //"time"
     "go.nanomsg.org/mangos/v3"
     nanoReq  "go.nanomsg.org/mangos/v3/protocol/req"
 )
@@ -19,6 +19,7 @@ type IIFBridge struct {
   cli string
   devs map[string]*IIFDev
   procTracker ProcTracker
+  config *Config
 }
 
 type IIFDev struct {
@@ -29,13 +30,14 @@ type IIFDev struct {
 }
 
 // IosIF bridge
-func NewIIFBridge( OnConnect func( dev BridgeDev ) (ProcTracker), OnDisconnect func( dev BridgeDev ), iosIfPath string, procTracker ProcTracker, detect bool ) ( *IIFBridge ) {
+func NewIIFBridge( config *Config, OnConnect func( dev BridgeDev ) (ProcTracker), OnDisconnect func( dev BridgeDev ), iosIfPath string, procTracker ProcTracker, detect bool ) ( *IIFBridge ) {
   self := &IIFBridge{
     onConnect: OnConnect,
     onDisconnect: OnDisconnect,
     cli: iosIfPath,
     devs: make( map[string]*IIFDev ),
     procTracker: procTracker,
+    config: config,
   }
   if detect { self.startDetect() }
   return self
@@ -115,26 +117,41 @@ func (self *IIFDev) setProcTracker( procTracker ProcTracker ) {
   self.procTracker = procTracker
 }
 
-func (self *IIFDev) tunnel( pairs []TunPair ) {
+func (self *IIFDev) tunnel( pairs []TunPair, onready func() ) {
+  tunName := "tunnel"
   specs := []string{}
   for _,pair := range pairs {
-    specs = append( specs, fmt.Sprintf("%d:%d",pair.from,pair.to) )//pair.String() )
-    fmt.Printf("Tunnel from %d to %d\n", pair.from, pair.to )
+    tunName = fmt.Sprintf( "%s_%d->%d", tunName, pair.from, pair.to )
+    specs = append( specs, fmt.Sprintf("%d:%d",pair.from,pair.to) )
   }
+  
   args := []string {
     "tunnel",
     "-id", self.udid,
   }
   args = append( args, specs... )
   fmt.Printf("Starting %s with %s\n", self.bridge.cli, args )
-  c := exec.Command( self.bridge.cli, args... )
-  c.Stderr = os.Stderr
-  c.Stdout = os.Stdout
-  go func() {
-    c.Run()
-    fmt.Printf("Tunnel stopped\n")
-  }()
-  time.Sleep( time.Second * 2 )
+  
+  o := ProcOptions{
+    procName: tunName,
+    binary: self.bridge.cli,
+    args: args,
+    stdoutHandler: func( line string, plog *log.Entry ) {
+      //fmt.Println( "tunnel:%s", line )
+      if strings.Contains( line, "Ready" ) {
+        if onready != nil {
+          onready()
+        }
+      }
+    },
+    stderrHandler: func( line string, plog *log.Entry ) {
+      fmt.Println( "tunnel err:%s", line )
+    },
+    onStop: func( interface{} ) {
+      log.Println("%s stopped", tunName)
+    },
+  }
+  proc_generic( self.procTracker, nil, &o )
 }
 
 func GetDevs( config *Config ) []string {
@@ -418,49 +435,124 @@ func (self *BackupVideo) GetFrame() []byte {
 }
 
 func (self *IIFDev) wda( port int, onStart func(), onStop func(interface{}) ) {
-  f, err := os.OpenFile("wda.log",
-      os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-  if err != nil {
-      log.WithFields( log.Fields{
-          "type": "wda_log_fail",
-      } ).Fatal("Could not open wda.log for writing")
-  }
-	
-  o := ProcOptions {
-      procName: "wda",
-      binary: "bin/go-ios",
-      args: []string{
-          "runwda",
-          "--bundleid", "com.appium.WebDriverAgentRunner.xctrunner",
-          "--testrunnerbundleid", "com.appium.WebDriverAgentRunner.xctrunner",
-          "--xctestconfig", "WebDriverAgentRunner.xctest",
-      },
-      stdoutHandler: func( line string, plog *log.Entry ) {
-          if strings.Contains(line, "Test Case '-[UITestingUITests testRunner]' started") {
-              plog.WithFields( log.Fields{
-                  "type": "wda_start",
-                  "uuid": censorUuid(self.udid),
-                  "port": port,
-              } ).Info("[WDA] successfully started")
-              onStart()
-          }
-          if strings.Contains( line, "configuration is unsupported" ) {
-              plog.Println( line )
-          }
-          fmt.Fprintln( f, line )
-      },
-      stderrHandler: func( line string, plog *log.Entry ) {
-          if strings.Contains( line, "configuration is unsupported" ) {
-              plog.Println( line )
-              fmt.Fprintln( f, line )
-          }
-      },
-      onStop: func( wrapper interface{} ) {
-          onStop( wrapper )
-      },
-  }
-  
-  proc_generic( self.procTracker, nil, &o )
+    config := self.bridge.config
+    method := config.wdaMethod
+    
+    if method == "go-ios" {
+        self.wdaGoIos( port, onStart, onStop )
+    } else if method == "tidevice" {
+        self.wdaTidevice( port, onStart, onStop )
+    } else {
+        fmt.Printf("Unknown wda start method %s\n", method )
+        os.Exit(1)
+    }
+}
+
+func (self *IIFDev) wdaGoIos( port int, onStart func(), onStop func(interface{}) ) {
+    f, err := os.OpenFile("wda.log",
+        os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        log.WithFields( log.Fields{
+            "type": "wda_log_fail",
+        } ).Fatal("Could not open wda.log for writing")
+    }
+    
+    config := self.bridge.config
+    biPrefix := config.wdaPrefix
+    bi := fmt.Sprintf( "%s.WebDriverAgentRunner.xctrunner", biPrefix )
+    
+    o := ProcOptions {
+        procName: "wda",
+        binary: "bin/go-ios",
+        args: []string{
+            "runwda",
+            "--bundleid", bi,
+            "--testrunnerbundleid", bi,
+            "--xctestconfig", "WebDriverAgentRunner.xctest",
+        },
+        stdoutHandler: func( line string, plog *log.Entry ) {
+            if strings.Contains(line, "Test Case '-[UITestingUITests testRunner]' started") {
+                plog.WithFields( log.Fields{
+                    "type": "wda_start",
+                    "uuid": censorUuid(self.udid),
+                    "port": port,
+                } ).Info("[WDA] successfully started")
+                onStart()
+            }
+            if strings.Contains( line, "configuration is unsupported" ) {
+                plog.Println( line )
+            }
+            fmt.Fprintln( f, line )
+        },
+        stderrHandler: func( line string, plog *log.Entry ) {
+            if strings.Contains( line, "configuration is unsupported" ) {
+                plog.Println( line )
+                fmt.Fprintln( f, line )
+            }
+        },
+        onStop: func( wrapper interface{} ) {
+            onStop( wrapper )
+        },
+    }
+    
+    proc_generic( self.procTracker, nil, &o )
+}
+
+func (self *IIFDev) wdaTidevice( port int, onStart func(), onStop func(interface{}) ) {
+    config := self.bridge.config
+    tiPath := config.tidevicePath
+    
+    f, err := os.OpenFile("wda.log",
+        os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        log.WithFields( log.Fields{
+            "type": "wda_log_fail",
+        } ).Fatal("Could not open wda.log for writing")
+    }
+    
+    biPrefix := config.wdaPrefix
+    bi := fmt.Sprintf( "%s.WebDriverAgentRunner.xctrunner", biPrefix )
+    
+    o := ProcOptions {
+        procName: "wda",
+        binary: tiPath,
+        args: []string{
+            "wdaproxy",
+            "-B", bi,
+            "-p", "0",
+        },
+        stderrHandler: func( line string, plog *log.Entry ) {
+            if strings.Contains(line, "WebDriverAgent start successfully") {
+                plog.WithFields( log.Fields{
+                    "type": "wda_start",
+                    "uuid": censorUuid(self.udid),
+                    "port": port,
+                } ).Info("[WDA] successfully started")
+                onStart()
+            }
+            if strings.Contains( line, "have to mount the Developer disk image" ) {
+                plog.WithFields( log.Fields{
+                    "type": "wda_start_err",
+                    "uuid": censorUuid(self.udid),
+                    "port": port,
+                } ).Fatal("[WDA] Developer disk not mounted. Cannot start WDA")
+            }
+            if strings.Contains( line, "'No app matches'" ) {
+                plog.WithFields( log.Fields{
+                    "type": "wda_start_err",
+                    "uuid": censorUuid(self.udid),
+                    "port": port,
+                    "rawErr": line,
+                } ).Fatal("[WDA] Incorrect WDA bundle id")
+            }
+            fmt.Fprintln( f, line )
+        },
+        onStop: func( wrapper interface{} ) {
+            onStop( wrapper )
+        },
+    }
+    
+    proc_generic( self.procTracker, nil, &o )
 }
 
 func (self *IIFDev) destroy() {

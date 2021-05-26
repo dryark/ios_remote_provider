@@ -24,6 +24,7 @@
             buildStyle: "Automatic" // or "Manual"
             provisioningProfile: "" // specify when buildStyle is Manual
         }
+        startMethod: "go-ios"
     },
     vidtest: {
         main: {

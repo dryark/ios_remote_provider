@@ -222,7 +222,12 @@ func (self *Device) startProcs() {
         }
     } )
     
-    self.forwardVidPorts( self.udid )
+    self.forwardVidPorts( self.udid, func() {
+        self.startProcs2()
+    } )
+}
+
+func (self *Device) startProcs2() {
     self.appStreamStopChan = make( chan bool )
     self.vidStreamer = NewAppStream( self.appStreamStopChan, self.vidControlPort, self.vidPort, self.udid )
     self.vidStreamer.mainLoop()
@@ -303,12 +308,11 @@ func (self *Device) stopVidStream() {
     self.cf.stopAppStream( self.udid )
 }
 
-func (self *Device) forwardVidPorts( udid string ) {
+func (self *Device) forwardVidPorts( udid string, onready func() ) {
     self.bridge.tunnel( []TunPair{
         TunPair{ from: self.vidPort, to: 8352 },
         TunPair{ from: self.vidControlPort, to: 8351 },
-    } )
-    //curDir, _ := os.Getwd()
+    }, onready )
 } 
 
 func (self *Device) endProcs() {

@@ -42,6 +42,7 @@ func NewDeviceTracker( config *Config, detect bool ) (*DeviceTracker) {
         cfStop: cfStop,
     }
     self.bridge = NewIIFBridge(
+        config,
         func( dev BridgeDev ) ProcTracker { return self.onDeviceConnect1( dev ) },
         func( dev BridgeDev ) { self.onDeviceDisconnect1( dev ) },
         config.iosIfPath,

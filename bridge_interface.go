@@ -38,7 +38,7 @@ type iProc struct {
 
 type BridgeDev interface {
   getUdid() string
-  tunnel( pairs []TunPair )
+  tunnel( pairs []TunPair, onready func() )
   info( names []string ) map[string]string
   gestalt( names []string ) map[string]string
   gestaltnode( names []string ) map[string]uj.JNode
