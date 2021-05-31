@@ -131,10 +131,8 @@ func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
     self.cf.notifyDeviceExists( udid, width, height, clickWidth, clickHeight )
     dev := self.onDeviceConnect( udid, bdev )
     self.cf.notifyDeviceInfo( dev )
-    dev.startEventLoop()
-    //dev.openBackupStream()
     bdev.setProcTracker( self )
-    dev.startProcs()
+    dev.startup()
     return dev
 }
 

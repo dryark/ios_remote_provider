@@ -55,14 +55,10 @@ func (self *WDA) start() {
                 if self.startChan != nil {
                     self.startChan <- true
                 }
-                self.dev.EventCh <- DevEvent{
-                    action: 1,
-                }
+                self.dev.EventCh <- DevEvent{ action: DEV_WDA_START }
             },
             func(interface{}) { // onStop
-                self.dev.EventCh <- DevEvent{
-                    action: 2,
-                }
+                self.dev.EventCh <- DevEvent{ action: DEV_WDA_STOP }
             },
         )
     } )

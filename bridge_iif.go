@@ -502,6 +502,10 @@ func (self *IIFDev) wdaTidevice( port int, onStart func(), onStop func(interface
     config := self.bridge.config
     tiPath := config.tidevicePath
     
+    log.WithFields( log.Fields{
+        "type":  "tidevice_path_unset",
+    } ).Fatal("tidevice path is unknown. Run `make usetidevice` to correct")
+    
     f, err := os.OpenFile("wda.log",
         os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
     if err != nil {

@@ -4,6 +4,7 @@ import (
     "fmt"
     log "github.com/sirupsen/logrus"
     gocmd "github.com/go-cmd/cmd"
+    "os"
     "time"
 )
 
@@ -64,13 +65,7 @@ func proc_generic( procTracker ProcTracker, wrapper interface{}, opt *ProcOption
     }
         
     var plog *log.Entry
-    /*if wrapper != nil {
-        plog = log.WithFields( log.Fields{
-            "proc": opt.procName,
-            "uuid": censorUuid( dev.uuid ),
-        } )
-        
-    }*/
+
     plog = log.WithFields( log.Fields{ "proc": opt.procName } )
     
     if procTracker != nil {
@@ -86,6 +81,15 @@ func proc_generic( procTracker ProcTracker, wrapper interface{}, opt *ProcOption
     
     if opt.binary == "" {
         fmt.Printf("Binary not set\n")
+    }
+    
+    _, ferr := os.Stat( opt.binary )
+    if ferr != nil {
+        log.WithFields( log.Fields{
+            "type":  "proc_bin_missing",
+            "error": ferr,
+            "path":  opt.binary,
+        } ).Fatal("Binary path does not exist. Cannot start process")
     }
     
     startFields := log.Fields{

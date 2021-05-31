@@ -43,7 +43,7 @@ func firstFrameJSON( devTracker *DeviceTracker, bytes []byte ) {
         height := root.Get("height").Int()
         uuid := root.Get("uuid").String()
         devEvent := DevEvent{
-            action: 3,
+            action: DEV_VIDEO_START,
             width: width,
             height: height,
         }

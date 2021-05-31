@@ -172,16 +172,17 @@ func loadConfig( configPath string, defaultsPath string, calculatedPath string )
                 "type":        "err_read_calculated",
                 "error":       serr2,
                 "defaults_path": calculatedPath,
-            } ).Fatal("Could not read specified calculated path")
+            } ).Warn("Could not read specified calculated path. Calculated options will not function.")
+        } else {
+            calculatedFile := calculatedPath
+            switch mode := fh2.Mode(); {
+                case mode.IsDir(): calculatedFile = fmt.Sprintf("%s/default.json", calculatedPath)
+            }
+            content2, err2 := ioutil.ReadFile( calculatedFile )
+            if err2 != nil { log.Fatal( err2 ) }
+            calculated, _ := uj.Parse( content2 )
+            defaults.Overlay( calculated )
         }
-        calculatedFile := calculatedPath
-        switch mode := fh2.Mode(); {
-            case mode.IsDir(): calculatedFile = fmt.Sprintf("%s/default.json", calculatedPath)
-        }
-        content2, err2 := ioutil.ReadFile( calculatedFile )
-        if err2 != nil { log.Fatal( err2 ) }
-        calculated, _ := uj.Parse( content2 )
-        defaults.Overlay( calculated )
     }
     //defaults.Dump()
     

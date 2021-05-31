@@ -143,7 +143,7 @@ func ( self *ControlFloor ) stopVidStream( udid string ) {
 }
 
 // Called from the device object
-func ( self *ControlFloor ) startAppStream( udid string ) ( *ws.Conn ) {
+func ( self *ControlFloor ) connectVidChannel( udid string ) *ws.Conn {
     dialer := ws.Dialer{
         Jar: self.cookiejar,
     }
@@ -160,7 +160,7 @@ func ( self *ControlFloor ) startAppStream( udid string ) ( *ws.Conn ) {
         panic( err )
     }
     
-    fmt.Printf("Connected to cf for imgStream\n")
+    fmt.Printf("Connected CF imgStream\n")
     
     //dev := self.DevTracker.getDevice( udid )
     
@@ -173,7 +173,7 @@ func ( self *ControlFloor ) startAppStream( udid string ) ( *ws.Conn ) {
 }
 
 // Called from the device object
-func ( self *ControlFloor ) stopAppStream( udid string ) {
+func ( self *ControlFloor ) destroyVidChannel( udid string ) {
     vidConn := self.vidConns[ udid ]
     vidConn.Close()
     

@@ -23,6 +23,16 @@ const (
     VID_END
 )
 
+const (
+    DEV_STOP = iota
+    DEV_WDA_START
+    DEV_WDA_STOP
+    DEV_VIDEO_START
+    DEV_VIDEO_STOP
+    DEV_ALERT_APPEAR
+    DEV_ALERT_GONE
+)
+
 type Device struct {
     udid        string
     name        string
@@ -43,6 +53,7 @@ type Device struct {
     EventCh     chan DevEvent
     BackupCh    chan BackupEvent
     wda         *WDA
+    wdaRunning  bool
     devTracker  *DeviceTracker
     config      *Config
     devConfig   *CDevice
@@ -73,6 +84,7 @@ func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev Bri
         EventCh:    make( chan DevEvent ),
         BackupCh:   make( chan BackupEvent ),
         bridge:     bdev,
+        wdaRunning: false,
     }
     if devConfig, ok := config.devs[udid]; ok {
         dev.devConfig = &devConfig
@@ -103,7 +115,7 @@ type DevEvent struct {
 }
 
 func (self *Device) shutdown() {
-    go func() { self.EventCh <- DevEvent{ action: 0 } }()
+    go func() { self.EventCh <- DevEvent{ action: DEV_STOP } }()
     go func() { self.BackupCh <- BackupEvent{ action: VID_END } }()
     
     for _,proc := range self.process {
@@ -124,16 +136,23 @@ func (self *Device) startEventLoop() {
             select {
             case event := <- self.EventCh:
                 action := event.action
-                if action == 0 { // stop event loop
+                if action == DEV_STOP { // stop event loop
                     break DEVEVENTLOOP
-                } else if action == 1 { // WDA started
+                } else if action == DEV_WDA_START { // WDA started
+                    self.wdaRunning = true
                     self.cf.notifyWdaStarted( self.udid )
                     self.wda.ensureSession()
                     // start video streaming
-                } else if action == 2 { // WDA stopped
+                } else if action == DEV_WDA_STOP { // WDA stopped
+                    self.wdaRunning = false
                     self.cf.notifyWdaStopped( self.udid )
-                } else if action == 3 { // first video frame
+                } else if action == DEV_VIDEO_START { // first video frame
                     self.onFirstFrame( &event )
+                } else if action == DEV_VIDEO_STOP {
+                } else if action == DEV_ALERT_APPEAR {
+                    self.enableBackupVideo()
+                } else if action == DEV_ALERT_GONE {
+                    self.disableBackupVideo()
                 }
             }
         }
@@ -179,11 +198,10 @@ func (self *Device) enableBackupVideo() {
 }
 
 func (self *Device) sendBackupFrame() {
-    //fmt.Printf(".")
     if self.vidOut != nil {
-        //fmt.Printf("Fetching frame\n")
+        //fmt.Printf("Fetching frame - ")
         pngData := self.backupVideo.GetFrame()
-        //fmt.Printf("  Got back %d bytes\n", len( pngData ) )
+        //fmt.Printf("%d bytes\n", len( pngData ) )
         if( len( pngData ) > 0 ) {
             self.vidOut.WriteMessage( ws.BinaryMessage, pngData )
         }
@@ -191,23 +209,27 @@ func (self *Device) sendBackupFrame() {
 }
 
 func (self *Device) stopEventLoop() {
-    self.EventCh <- DevEvent{
-        action: 0,
-    }
+    self.EventCh <- DevEvent{ action: DEV_STOP }
+}
+
+func (self *Device) startup() {
+    self.startEventLoop()
+    self.startProcs()
 }
 
 func (self *Device) startProcs() {
     // start wda
     self.wda = NewWDA( self.config, self.devTracker, self, self.wdaPort )
-    //proc_ios_video_stream( self.devTracker, self )
     
     self.startBackupFrameProvider() // just the timed loop
     self.backupVideo = self.bridge.NewBackupVideo( 
         self.backupVideoPort,
         func( interface{} ) {}, // onStop
     )
+    
     self.enableVideo()
     //self.enableBackupVideo()
+    
     self.bridge.NewSyslogMonitor( func( root uj.JNode ) {
         msg := root.GetAt( 3 ).String()
         
@@ -215,10 +237,10 @@ func (self *Device) startProcs() {
         
         if strings.Contains( msg, "Presenting <SBUserNotificationAlert" ) {
             fmt.Printf("Alert appeared\n")
-            self.enableBackupVideo()
+            self.EventCh <- DevEvent{ action: DEV_ALERT_APPEAR }
         } else if strings.Contains( msg, "deactivate alertItem: <SBUserNotificationAlert" ) {
             fmt.Printf("Alert went away\n")
-            self.disableBackupVideo()
+            self.EventCh <- DevEvent{ action: DEV_ALERT_APPEAR }
         }
     } )
     
@@ -271,9 +293,12 @@ func (self *Device) enableVideo() {
 }
 
 func (self *Device) startVidStream() { // conn *ws.Conn ) {
-    conn := self.cf.startAppStream( self.udid )
+    conn := self.cf.connectVidChannel( self.udid )
     
-    controlChan := self.vidStreamer.getControlChan()
+    var controlChan chan int
+    if self.vidStreamer != nil {
+        controlChan = self.vidStreamer.getControlChan()
+    }
     
     // Necessary so that writes to the socket fail when the connection is lost
     go func() {
@@ -287,8 +312,6 @@ func (self *Device) startVidStream() { // conn *ws.Conn ) {
     
     self.vidOut = conn
     
-    //backupActive := false
-    
     imgConsumer := NewImageConsumer( func( text string, data []byte ) (error) {
         if self.vidMode != VID_APP { return nil }
         // conn.WriteMessage( ws.TextMessage, []byte( fmt.Sprintf("{\"action\":\"normalFrame\"}") ) )
@@ -297,15 +320,16 @@ func (self *Device) startVidStream() { // conn *ws.Conn ) {
         // there are no frames to send
     } )
     
-    self.vidStreamer.setImageConsumer( imgConsumer )
-    
-    fmt.Printf("Telling video stream to start\n")
-    controlChan <- 1 // start
+    if self.vidStreamer != nil {
+        self.vidStreamer.setImageConsumer( imgConsumer )
+        fmt.Printf("Telling video stream to start\n")
+        controlChan <- 1 // start
+    }
 }
 
 func (self *Device) stopVidStream() {
     self.vidOut = nil
-    self.cf.stopAppStream( self.udid )
+    self.cf.destroyVidChannel( self.udid )
 }
 
 func (self *Device) forwardVidPorts( udid string, onready func() ) {
