@@ -47,4 +47,51 @@ Open `https://yourip:8080` to see if controlfloor is running
 1. `cd ios_remote_provider`
 1. `./main run`
 
+## Automatically starting Video App
+1. Figure out your device id  
+    A. `./bin/iosif list`  
+1. Figure out your device UI width/height  
+    This is the output of the `/session/[sid]/window/size` WDA command.  
+  
+    You may consider using the https://github.com/nanoscopic/ios_controller script to run this command easily. The window_size() function within `test.pl` of that repo does so.  
+  
+    Alternatively you can use curl/wget to directly make calls against WDA to create a session and then make the call. 
+1. Figure out how Control Center is reached on your device.  
+    It will be by swiping up from the bottom center of the screen, or down from the top right of the screen.
+1. Add device specific config block to `config.json`:  
+    ```  
+    {
+        ...
+        devices:[
+            {
+                udid:"[your device id]"
+                uiWidth:[your device width]
+                uiHeight:[your device height]
+                // bottomUp or topDown
+                controlCenterMethod:"bottomUp"
+            }
+        ]
+    }
+    ```
+1. That's it. The video app will be started automatically when the provider is started.
 
+## Using tidevice instead of go-ios
+
+You may wish to use tidevice instead of go-ios to start WDA. Do the following to get it setup:  
+  
+1. Install tidevice. `pip3 install tidevice`
+
+1. Add a WDA start method to your `config.json`:  
+    ```
+    {
+        ...
+        wda:{
+            ...
+            startMethod: "tidevice"
+        }
+    }
+    ```
+
+1. Run `make usetidevice` to auto-generate the `calculated.json` file containing the location of tidevice installed on your system.  
+  
+1. Start provider normally; tidevice will be used.
