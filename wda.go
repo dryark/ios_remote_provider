@@ -6,6 +6,7 @@ import (
     "net/http"
     "strings"
     "time"
+    //"os"
     log "github.com/sirupsen/logrus"
     uj "github.com/nanoscopic/ujsonin/v2/mod"
 )
@@ -24,6 +25,12 @@ type WDA struct {
 }
 
 func NewWDA( config *Config, devTracker *DeviceTracker, dev *Device, localhostPort int ) (*WDA) {
+    self := NewWDANoStart( config, devTracker, dev, localhostPort )
+    self.start()
+    return self
+}
+
+func NewWDANoStart( config *Config, devTracker *DeviceTracker, dev *Device, localhostPort int ) (*WDA) {
     self := WDA{
         udid: dev.udid,
         onDevicePort: 8100,
@@ -34,7 +41,7 @@ func NewWDA( config *Config, devTracker *DeviceTracker, dev *Device, localhostPo
         base: fmt.Sprintf("http://127.0.0.1:%d",localhostPort),
     }
     
-    self.start()
+    //self.start()
     
     return &self
 }
@@ -72,8 +79,14 @@ func (self *WDA) stop() {
 }
 
 func (self *WDA) ensureSession() {
-    sid := self.create_session( "" )
-    fmt.Printf("Created wda session id=%s\n", sid )
+    sid := self.get_session()
+    if sid == "" {
+        //fmt.Printf("No WDA session exists. Creating\n" )
+        sid = self.create_session( "" )
+        //fmt.Printf("Created wda session id=%s\n", sid )
+    } else {
+        //fmt.Printf("Session existing; id=%s\n", sid )
+    }
     self.sessionId = sid
 }
 
@@ -87,21 +100,42 @@ func resp_to_str( resp *http.Response ) ( string ) {
     //return buf.String()  
 }
 
-func resp_to_val( resp *http.Response ) ( uj.JNode ) {
+func resp_to_val( resp *http.Response ) ( uj.JNode, string ) {
+  if resp == nil {
+    fmt.Printf("nil response from http request\n")
+    return nil, ""
+  }
   rawContent := resp_to_str( resp )
-  if len( rawContent ) == 0 { return nil }
+  if len( rawContent ) == 0 { return nil, "" }
   if !strings.HasPrefix( rawContent, "{" ) {
-    return nil // &JHash{ nodeType: 1, hash: NewNodeHash() }
+    return nil, rawContent // &JHash{ nodeType: 1, hash: NewNodeHash() }
   }
   content, _ := uj.Parse( []byte( rawContent ) )
   val := content.Get("value")
-  if val == nil { return content }
-  return val
+  if val == nil { return content, rawContent }
+  return val, rawContent
+}
+
+func ( self *WDA ) get_session() ( string ) {
+  resp, err := http.Get( self.base + "/status" )
+  if err != nil {
+    return ""
+  }
+  
+  statText := resp_to_str( resp )
+  //fmt.Printf("status text:%s\n", statText )
+  
+  stat, _ := uj.Parse( []byte( statText ) )
+  
+  //status := resp_to_val( resp )
+  sessNode := stat.Get("sessionId")
+  if sessNode == nil { return "" }
+  return sessNode.String()
 }
 
 func ( self *WDA ) create_session( bundle string ) ( string ) {
-  time.Sleep( time.Second * 4 )
-  ops := fmt.Sprintf( `{
+  //time.Sleep( time.Second * 4 )
+  /*ops := fmt.Sprintf( `{
     "capabilities": {
       "alwaysMatch": {},
       "firstMatch": [
@@ -110,21 +144,70 @@ func ( self *WDA ) create_session( bundle string ) ( string ) {
         }
       ]
     }
-  }` );
-  resp, err := http.Post( self.base + "/session", "application/json; charset=UTF-8", strings.NewReader( ops ) )
-  if err != nil {
-      panic( err )
-  }
-  if resp.StatusCode != 200 {
-      str := resp_to_str( resp )
-      
-      fmt.Printf("Got status %d back from query to %s\nstr = %s\n", resp.StatusCode, self.base + "/session", str )
-      return ""
+  }` )*/
+  ops := fmt.Sprintf( `{
+    "capabilities": {
+      "alwaysMatch": {
+          "arguments": [],
+          "bundleId": "com.apple.Preferences",
+          "environment": {},
+          "shouldUseSingletonTestManager": true,
+          "shouldUseTestManagerForVisibilityDetection": false,
+          "shouldWaitForQuiescence": false
+      },
+      "firstMatch": [
+        {
+          
+        }
+      ]
+    }
+  }` )
+  
+  //resp, _ := http.Get( self.base + "/health" )
+  //hStr := resp_to_str( resp )
+  //fmt.Printf("resp to health:%v\n", hStr )
+  client := &http.Client{}
+  
+  var res uj.JNode
+  rawRes := ""
+  for {
+    req, _ := http.NewRequest( "POST", self.base + "/session", strings.NewReader( ops ) )
+    req.Close = true
+    req.Header.Set("Content-Type", "application/json")
+    resp, err := client.Do( req )
+    
+    //resp, err := http.Post( self.base + "/session", "application/json", strings.NewReader( ops ) )
+    if err != nil {
+        errText := err.Error()
+        fmt.Printf("Error creating session: %s\n", errText )
+        fmt.Printf("  Retrying\n")
+        time.Sleep( time.Second * 1 )
+        continue
+    }
+    
+    if resp.StatusCode != 200 {
+        str := resp_to_str( resp )
+        
+        fmt.Printf("Got status %d back from query to %s\nstr = %s\n", resp.StatusCode, self.base + "/session", str )
+        return ""
+    }
+    
+    res, rawRes = resp_to_val( resp )
+    if res == nil {
+      fmt.Printf("Session create results:`%s`\n", rawRes )
+      fmt.Printf("  Could not parse. Retrying")
+      continue
+    }
+    break
   }
   
-  res := resp_to_val( resp )
-  //fmt.Printf("result from create session: %s\n", res )
-  return res.Get("sessionId").String()
+  sessNode := res.Get("sessionId")
+  
+  if sessNode == nil {
+    fmt.Printf("Result of session create:%s\n", rawRes )
+    panic("Did not get sessionId on session create")
+  }
+  return sessNode.String()
 }
 
 func (self *WDA) clickAt( x int, y int ) {
@@ -152,7 +235,7 @@ func (self *WDA) sessionCall( url string, json string ) uj.JNode {
     var val uj.JNode
     
     if self.sessionId == "" {
-      self.ensureSession()
+        self.ensureSession()
     }
     
     fullUrl := self.base + "/session/" + self.sessionId + url
@@ -164,8 +247,9 @@ func (self *WDA) sessionCall( url string, json string ) uj.JNode {
         strings.NewReader( json ),
     )
     
-    val = resp_to_val( resp )
-    val.Dump()
+    rawVal := ""
+    val, rawVal = resp_to_val( resp )
+    fmt.Printf("Result: %s\n", rawVal )
     err = val.Get("error")
     
     if err != nil {
@@ -178,7 +262,7 @@ func (self *WDA) sessionCall( url string, json string ) uj.JNode {
                 "application/json",
                 strings.NewReader( json ),
             )
-            val = resp_to_val( resp )
+            val, _ = resp_to_val( resp )
         }
     }
     
@@ -310,7 +394,16 @@ func (self *WDA) ElForceTouch( elId string, pressure int ) {
     self.sessionCall( "/wda/element/" + elId + "/forceTouch", jsonIn )
 }
 
+func (self *WDA) ElLongTouch( elId string ) {
+    jsonIn := fmt.Sprintf( `{
+        "duration": 2
+    }` )
+    
+    self.sessionCall( "/wda/element/" + elId + "/touchAndHold", jsonIn )
+}
+
 func (self *WDA) ElByName( elName string ) string {
+    fmt.Printf("Finding element named %s\n", elName )
     jsonIn := fmt.Sprintf( `{
         "using": "name",
         "value": "%s"
@@ -343,11 +436,21 @@ func (self *WDA) WindowSize() (int,int) {
     resp, _ := http.Get( self.base + "/session/" + self.sessionId + "/window/size" )
     
     json := resp_to_str( resp )
-    //fmt.Println( json )
     
-    root, _ := uj.Parse( []byte(json) )
-    wid := root.Get("value").Get("width").Int()
-    heg := root.Get("value").Get("height").Int()
+    root, _, parseErr := uj.ParseFull( []byte(json) )
+    if parseErr != nil {
+       fmt.Printf("Parse error: %v\n", parseErr )
+       fmt.Println( json )
+       panic("/window/size WDA call did not return valid JSON")
+    }
+    rootVal := root.Get("value")
+    if rootVal == nil {
+        fmt.Println( json )
+        panic("/window/size WDA call didn't return a 'value'")
+    }
+    
+    wid := rootVal.Get("width").Int()
+    heg := rootVal.Get("height").Int()
     
     return wid,heg
 }
@@ -355,7 +458,7 @@ func (self *WDA) WindowSize() (int,int) {
 func (self *WDA) Source() string {
     resp, _ := http.Get( self.base + "/source" )
     
-    val := resp_to_val( resp )
+    val, _ := resp_to_val( resp )
     
     xmlSource := val.String()
     
@@ -365,6 +468,7 @@ func (self *WDA) Source() string {
 }
 
 func (self *WDA) OpenControlCenter( controlCenterMethod string ) {
+    fmt.Printf("Opening control center\n")  
     width, height := self.WindowSize()
     
     if controlCenterMethod == "bottomUp" {
@@ -379,11 +483,12 @@ func (self *WDA) OpenControlCenter( controlCenterMethod string ) {
 
 func (self *WDA) StartBroadcastStream( appName string, controlCenterMethod string ) {
   self.OpenControlCenter( controlCenterMethod )
-  time.Sleep( time.Second * 2 )
+  time.Sleep( time.Second * 5 )
   
   devEl := self.ElByName( "Screen Recording" )
-  
-  self.ElForceTouch( devEl, 2000 )
+  fmt.Printf("Selecting Screen Recording; el=%s\n", devEl )
+  //self.ElForceTouch( devEl, 2000 )
+  self.ElLongTouch( devEl )
   
   time.Sleep( time.Second * 2 )
   

@@ -106,6 +106,7 @@ func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
         "AvailableDisplayZoomSizes",
         "main-screen-width",
         "main-screen-height",
+        "ArtworkTraits",
     } )
     width := mgInfo["main-screen-width"].Int()
     height := mgInfo["main-screen-height"].Int()
@@ -130,7 +131,7 @@ func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
         
     self.cf.notifyDeviceExists( udid, width, height, clickWidth, clickHeight )
     dev := self.onDeviceConnect( udid, bdev )
-    self.cf.notifyDeviceInfo( dev )
+    self.cf.notifyDeviceInfo( dev, mgInfo["ArtworkTraits"] )
     bdev.setProcTracker( self )
     dev.startup()
     return dev

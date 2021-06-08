@@ -365,13 +365,19 @@ func (self *ControlFloor) baseNotify( name string, udid string, vals url.Values 
     }
 }
 
-func (self *ControlFloor) notifyDeviceInfo( dev *Device ) {
+func (self *ControlFloor) notifyDeviceInfo( dev *Device, artworkTraits uj.JNode ) {
     info := dev.info
     udid := dev.udid
     str := "{"
     for key, val := range info {
         str = str + fmt.Sprintf("\"%s\":\"%s\",", key, val )
     }
+    
+    prodDescr := "unknown"
+    if artworkTraits != nil {
+        prodDescr = artworkTraits.Get("ArtworkDeviceProductDescription").String()
+    }
+    str = str + "\"ArtworkDeviceProductDescription\":\"" + prodDescr + "\"\n"
     str = str + "}"
     
     self.baseNotify("device info", udid, url.Values{

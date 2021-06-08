@@ -2,7 +2,7 @@
 
 TARGET = main
 
-all: $(TARGET) bin/iosif repos/vidapp bin/go-ios
+all: $(TARGET) bin/iosif repos/vidapp/versionMarker bin/go-ios
 
 bin/gojq: repos/ujsonin/versionMarker
 	make -C repos/ujsonin gojq && touch bin/gojq
@@ -62,6 +62,10 @@ repos/iosif/versionMarker: repos/iosif repos/versionMarkers/iosif
 repos/iosif:
 	git clone $(config_repos_iosif) repos/iosif
 
+repos/vidapp/versionMarker: repos/vidapp repos/versionMarkers/vidapp
+	cd repos/vidapp && git pull
+	touch repos/vidapp/versionMarker
+
 repos/vidapp:
 	git clone $(config_repos_vidapp) repos/vidapp
 
@@ -72,37 +76,37 @@ repos/go-ios/versionMarker: repos/go-ios repos/versionMarkers/go-ios
 repos/go-ios:
 	git clone $(config_repos_goios) repos/go-ios
 
-vidtest_unsigned.xcarchive:
-	xcodebuild -project repos/vidapp/vidtest/vidtest.xcodeproj -scheme vidtest archive -archivePath ./vidtest.xcarchive CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+vidstream_unsigned.xcarchive:
+	xcodebuild -project repos/vidapp/vidstream/vidstream.xcodeproj -scheme vidstream archive -archivePath ./vidstream.xcarchive CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 
-vidtest.xcarchive: repos/vidapp
+vidstream.xcarchive: repos/vidapp
 	@./bin/gojq overlay -file1 default.json -file2 config.json -json > muxed.json
-	./python/configure_vidtest.py muxed.json
-	xcodebuild -project repos/vidapp/vidtest/vidtest.xcodeproj -scheme vidtest archive -archivePath ./vidtest.xcarchive
+	./python/configure_vidstream.py muxed.json
+	xcodebuild -project repos/vidapp/vidstream/vidstream.xcodeproj -scheme vidstream archive -archivePath ./vidstream.xcarchive
 
-vidtest.ipa: vidtest.xcarchive repos/vidapp
-	plutil -replace teamID -string $(config_vidtest_devTeamOu) ./repos/vidapp/vidtest/ExportOptions.plist
-	@if [ -e vidtest.ipa ]; then rm vidtest.ipa; fi
-	xcodebuild -exportArchive -archivePath ./vidtest.xcarchive -exportOptionsPlist ./repos/vidapp/vidtest/ExportOptions.plist -exportPath vidtest.ipa
+vidstream.ipa: vidstream.xcarchive repos/vidapp
+	plutil -replace teamID -string $(config_vidstream_devTeamOu) ./repos/vidapp/vidstream/ExportOptions.plist
+	@if [ -e vidstream.ipa ]; then rm vidstream.ipa; fi
+	xcodebuild -exportArchive -archivePath ./vidstream.xcarchive -exportOptionsPlist ./repos/vidapp/vidstream/ExportOptions.plist -exportPath vidstream.ipa
 
-vidtest.ipa/vidtest.ipa_x: vidtest.ipa
-	mkdir vidtest.ipa/vidtest.ipa_x
-	unzip vidtest.ipa/vidtest.ipa -d vidtest.ipa/vidtest.ipa_x
-	find vidtest.ipa/vidtest.ipa_x | grep provision | xargs rm
-	find vidtest.ipa/vidtest.ipa_x | grep _CodeSignature$$ | xargs rm -rf
+vidstream.ipa/vidstream.ipa_x: vidstream.ipa
+	mkdir vidstream.ipa/vidstream.ipa_x
+	unzip vidstream.ipa/vidstream.ipa -d vidstream.ipa/vidstream.ipa_x
+	find vidstream.ipa/vidstream.ipa_x | grep provision | xargs rm
+	find vidstream.ipa/vidstream.ipa_x | grep _CodeSignature$$ | xargs rm -rf
 
-vidtest_clean.ipa: vidtest.ipa/vidtest.ipa_x
-	cd vidtest.ipa/vidtest.ipa_x && zip -r ../../vidtest_clean.ipa Payload
+vidstream_clean.ipa: vidstream.ipa/vidstream.ipa_x
+	cd vidstream.ipa/vidstream.ipa_x && zip -r ../../vidstream_clean.ipa Payload
 
-installvidapp: vidtest.xcarchive
-	ios-deploy -b vidtest.xcarchive/Products/Applications/vidtest.app
+installvidapp: vidstream.xcarchive
+	ios-deploy -b vidstream.xcarchive/Products/Applications/vidstream.app
 
-vidtest_unsigned.ipa:
+vidstream_unsigned.ipa:
 	@if [ -e tmp ]; then rm -rf tmp; fi
 	mkdir tmp
 	mkdir tmp/Payload
-	ln -s ../../vidtest.xcarchive/Products/Applications/vidtest.app tmp/Payload/vidtest.app
-	cd tmp && zip -r ../vidtest.ipa Payload
+	ln -s ../../vidstream.xcarchive/Products/Applications/vidstream.app tmp/Payload/vidstream.app
+	cd tmp && zip -r ../vidstream.ipa Payload
 
 clonewda: repos/WebDriverAgent
 

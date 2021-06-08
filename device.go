@@ -257,7 +257,7 @@ func (self *Device) startProcs2() {
 
 func (self *Device) enableVideo() {
     // check if video app is running
-    vidPid := self.bridge.GetPid( "vidtest2" )
+    vidPid := self.bridge.GetPid( self.config.vidAppExtBid )
     // if it is running, go ahead and use it
     if vidPid != 0 {
         self.vidMode = VID_APP
@@ -272,19 +272,21 @@ func (self *Device) enableVideo() {
     }
     
     // if video app is not running, check if it is installed
-    installInfo := self.bridge.AppInfo( "vidtest2" )
+    installInfo := self.bridge.AppInfo(
+       self.config.vidAppBidPrefix + "." + self.config.vidAppBid,
+    )
     // if installed, start it
     if installInfo != nil {
-        self.wda.StartBroadcastStream( "vidtest2", controlCenterMethod )
+        self.wda.StartBroadcastStream( self.config.vidAppName, controlCenterMethod )
         self.vidMode = VID_APP
         return
     }
     
     // if video app is not installed
     // install it, then start it
-    success := self.bridge.InstallApp( "vidtest.xcarchive/Products/Applications/vidtest.app" )
+    success := self.bridge.InstallApp( "vidstream.xcarchive/Products/Applications/vidstream.app" )
     if success {
-        self.wda.StartBroadcastStream( "vidtest2", controlCenterMethod )
+        self.wda.StartBroadcastStream( self.config.vidAppName, controlCenterMethod )
         self.vidMode = VID_APP
         return
     }

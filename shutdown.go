@@ -44,6 +44,7 @@ func coro_sigterm( config *Config, devTracker *DeviceTracker ) {
 type Aproc struct {
     pid int
     cmd string
+    args []string
 }
 
 func get_procs() []Aproc {
@@ -65,7 +66,12 @@ func get_procs() []Aproc {
         //    fmt.Printf("line:%s %s\n", parts[0], parts[1] )
         //}
         pid, _ := strconv.Atoi( parts[0] )
-        procs = append( procs, Aproc{ pid: pid, cmd: parts[1] } )
+        
+        args := []string{}
+        if len( parts ) > 2 {
+            args = parts[2:]
+        }
+        procs = append( procs, Aproc{ pid: pid, cmd: parts[1], args: args } )
     }
     return procs
 }
@@ -96,6 +102,27 @@ func cleanup_procs( config *Config ) {
                 syscall.Kill( pid, syscall.SIGTERM )
                 hangingPids = append( hangingPids, pid ) 
             }
+        }
+    }
+    
+    // Death to all tidevice processes! *rage*
+    for _,proc := range procs {
+        if strings.Contains( proc.cmd, "tidevice" ) ||
+            (
+                strings.HasSuffix( proc.cmd, "Python" ) &&
+                proc.args[0] == "-m" &&
+                proc.args[1] == "tidevice" ) ||
+            (
+                strings.HasSuffix( proc.cmd, "Python" ) &&
+                strings.HasSuffix( proc.args[0], "tidevice" ) ) {
+            pid := proc.pid //proc.PID()
+            plog.WithFields( log.Fields{
+                "proc": "tidevice",
+                "pid":  pid,
+            } ).Warn("Leftover tidevice - Sending SIGTERM")
+            
+            syscall.Kill( pid, syscall.SIGTERM )
+            hangingPids = append( hangingPids, pid ) 
         }
     }
     

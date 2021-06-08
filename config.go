@@ -30,6 +30,10 @@ type Config struct {
     tidevicePath string
     wdaMethod    string
     wdaPrefix    string
+    vidAppName   string
+    vidAppBid    string
+    vidAppBidPrefix string
+    vidAppExtBid string
 }
 
 func GetStr( root uj.JNode, path string ) string {
@@ -72,6 +76,11 @@ func NewConfig( configPath string, defaultsPath string, calculatedPath string ) 
     config.wdaPath    = GetStr(  root, "bin_paths.wda" )
     config.wdaMethod  = GetStr(  root, "wda.startMethod" )
     config.wdaPrefix  = GetStr(  root, "wda.bundleIdPrefix" )
+    config.vidAppName = GetStr(  root, "vidapp.name" )
+    config.vidAppBid = GetStr( root, "vidapp.bundleId" )
+    config.vidAppExtBid = GetStr( root, "vidapp.extBundleId" )
+    config.vidAppBidPrefix = GetStr( root, "vidapp.bundleIdPrefix" )
+    
     tideviceNode := root.Get( "tidevice" )
     if tideviceNode != nil {
         config.tidevicePath = tideviceNode.String()

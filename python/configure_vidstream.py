@@ -6,7 +6,7 @@ jsonPath = "muxed.json"
 with open(jsonPath) as f:
   conf = json.load(f)
 
-project = XcodeProject.load('./repos/vidapp/vidtest/vidtest.xcodeproj/project.pbxproj')
+project = XcodeProject.load('./repos/vidapp/vidstream/vidstream.xcodeproj/project.pbxproj')
 
 mode = "Release"
 
@@ -24,20 +24,20 @@ def removeflag(target,flag):
     return
   project.remove_flags(flag, val, target, "Debug")
 
-l = "vidtest"
-r = "vidtest2"
+l = "vidstream"
+r = "vidstream_ext"
 
-vidtest = conf["vidtest"]
-idPrefix = vidtest["bundleIdPrefix"]
-project.set_flags('DEVELOPMENT_TEAM', vidtest["devTeamOu"], r, mode)
-project.set_flags('DEVELOPMENT_TEAM', vidtest["devTeamOu"], l, mode)
-project.set_flags('CODE_SIGN_STYLE', vidtest["main"]["buildStyle"], l, mode)
-project.set_flags('CODE_SIGN_STYLE', vidtest["extension"]["buildStyle"], r, mode)
-project.set_flags('PRODUCT_BUNDLE_IDENTIFIER', idPrefix + ".vidtest2", l, mode)
-project.set_flags('PRODUCT_BUNDLE_IDENTIFIER', idPrefix + ".vidtest2.extension", r, mode)
+vidstream = conf["vidapp"]
+idPrefix = vidstream["bundleIdPrefix"]
+project.set_flags('DEVELOPMENT_TEAM', vidstream["devTeamOu"], r, mode)
+project.set_flags('DEVELOPMENT_TEAM', vidstream["devTeamOu"], l, mode)
+project.set_flags('CODE_SIGN_STYLE', vidstream["main"]["buildStyle"], l, mode)
+project.set_flags('CODE_SIGN_STYLE', vidstream["extension"]["buildStyle"], r, mode)
+project.set_flags('PRODUCT_BUNDLE_IDENTIFIER', idPrefix + ".vidstream_ext", l, mode)
+project.set_flags('PRODUCT_BUNDLE_IDENTIFIER', idPrefix + ".vidstream_ext.extension", r, mode)
 
-lProv = vidtest["main"]["provisioningProfile"]
-rProv = vidtest["extension"]["provisioningProfile"]
+lProv = vidstream["main"]["provisioningProfile"]
+rProv = vidstream["extension"]["provisioningProfile"]
 
 if lProv == "":
   removeflag(l, 'PROVISIONING_PROFILE_SPECIFIER')
@@ -49,13 +49,13 @@ if rProv == "":
 else:
   project.set_flags('PROVISIONING_PROFILE_SPECIFIER', rProv, r, mode)
 
-print("vidtest:")
+print("vidstream:")
 print("  Style    : " + ( getflag(l, "CODE_SIGN_STYLE") or "nil" ) )
 print("  Dev Team : " + ( getflag(l, "DEVELOPMENT_TEAM") or "nil" ) )
 print("  Bundle ID: " + getflag(l, "PRODUCT_BUNDLE_IDENTIFIER") )
 print("  Prov Prof: " + ( getflag(l, "PROVISIONING_PROFILE_SPECIFIER") or "nil" ) )
 
-print("vidtest2:")
+print("vidstream_ext:")
 print("  Style    : " + ( getflag(r, "CODE_SIGN_STYLE") or "nil" ) )
 print("  Dev Team : " + ( getflag(r, "DEVELOPMENT_TEAM") or "nil" ) )
 print("  Bundle ID: " + getflag(r, "PRODUCT_BUNDLE_IDENTIFIER") )

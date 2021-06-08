@@ -26,7 +26,10 @@
         }
         startMethod: "go-ios"
     },
-    vidtest: {
+    vidapp: {
+        name: "CF Vidstream"
+        bundleId: "vidstream"
+        extBundleId: "vidstream_ext"
         main: {
             buildStyle: "Automatic" // or "Manual"
             provisioningProfile: ""

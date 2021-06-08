@@ -32,30 +32,49 @@ func main() {
         uc.OPT("-el","Element name to click",0),
     }
     uclop.AddCmd( "click", "Click element", runClick, clickOpts )
-    uclop.AddCmd( "wda", "Just run WDA", runWDA, nil )
+    
+    wdaOpts := uc.OPTS{
+        uc.OPT("-id","Udid of device",0),
+    }
+    uclop.AddCmd( "wda", "Just run WDA", runWDA, wdaOpts )
+    
+    windowSizeOpts := uc.OPTS{
+        uc.OPT("-id","Udid of device",0),
+    }
+    uclop.AddCmd( "winsize", "Get device window size", runWindowSize, windowSizeOpts )
     
     uclop.Run()
 }
 
-func wdaForDev1() (*WDA,*DeviceTracker) {
+func wdaForDev( id string ) (*WDA,*DeviceTracker) {
     config := NewConfig( "config.json", "default.json", "calculated.json" )
     
     devs := GetDevs( config )
-    dev1 := devs[0]
+    dev1 := id
+    if id == "" {
+        dev1 = devs[0]
+    }
     fmt.Printf("Dev id: %s\n", dev1)
     
     tracker := NewDeviceTracker( config, false )
     iifDev := NewIIFDev( tracker.bridge.(*IIFBridge), dev1, "x" )
     dev := NewDevice( config, tracker, dev1, iifDev )
     iifDev.setProcTracker( tracker )
-    wda := NewWDA( config, tracker, dev, 8100 )
+    wda := NewWDANoStart( config, tracker, dev, 8100 )
     return wda,tracker
 }
 
 func runWDA( cmd *uc.Cmd ) {
     runCleanup( cmd )
     
-    _,tracker := wdaForDev1()
+    id := ""
+    idNode := cmd.Get("-id")
+    if idNode != nil {
+      id = idNode.String()
+    }
+    
+    wda,tracker := wdaForDev( id )
+    wda.start()
  
     dotLoop( cmd, tracker )
 }
@@ -89,9 +108,11 @@ func dotLoop( cmd *uc.Cmd, tracker *DeviceTracker ) {
 func runClick( cmd *uc.Cmd ) {
     runCleanup( cmd )
     
-    wda,tracker := wdaForDev1()
+    wda,tracker := wdaForDev("")
     startChan := make( chan bool )
     wda.startChan = startChan
+    wda.start()
+    
     <- startChan
     
     wda.ensureSession()
@@ -101,6 +122,32 @@ func runClick( cmd *uc.Cmd ) {
     wda.ElForceTouch( recBtn, 2000 )
     
     dotLoop( cmd, tracker )
+}
+
+func runWindowSize( cmd *uc.Cmd ) {
+    //config := NewConfig( "config.json", "default.json", "calculated.json" )
+  
+    runCleanup( cmd )
+    
+    id := ""
+    idNode := cmd.Get("-id")
+    if idNode != nil {
+        id = idNode.String()
+    }
+    
+    wda,_ := wdaForDev( id )
+    startChan := make( chan bool )
+    wda.startChan = startChan
+    wda.start()
+    <- startChan
+    //fmt.Printf("WDA supposedly started")
+    
+    wda.ensureSession()
+    wid, heg := wda.WindowSize()
+    fmt.Printf("Wid: %d, Heg: %d\n", wid, heg )
+    wda.stop()
+    
+    runCleanup( cmd )
 }
 
 func common( cmd *uc.Cmd ) *Config {
