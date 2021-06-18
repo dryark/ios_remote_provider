@@ -144,7 +144,7 @@ func runWindowSize( cmd *uc.Cmd ) {
     
     wda.ensureSession()
     wid, heg := wda.WindowSize()
-    fmt.Printf("Wid: %d, Heg: %d\n", wid, heg )
+    fmt.Printf("Width: %d, Height: %d\n", wid, heg )
     wda.stop()
     
     runCleanup( cmd )

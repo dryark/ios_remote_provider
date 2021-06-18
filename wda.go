@@ -145,11 +145,16 @@ func ( self *WDA ) create_session( bundle string ) ( string ) {
       ]
     }
   }` )*/
+  
+  if bundle == "" {
+    bundle = "com.apple.Preferences"
+  }
+  
   ops := fmt.Sprintf( `{
     "capabilities": {
       "alwaysMatch": {
           "arguments": [],
-          "bundleId": "com.apple.Preferences",
+          "bundleId": "%s",
           "environment": {},
           "shouldUseSingletonTestManager": true,
           "shouldUseTestManagerForVisibilityDetection": false,
@@ -161,7 +166,7 @@ func ( self *WDA ) create_session( bundle string ) ( string ) {
         }
       ]
     }
-  }` )
+  }`, bundle )
   
   //resp, _ := http.Get( self.base + "/health" )
   //hStr := resp_to_str( resp )
@@ -481,19 +486,15 @@ func (self *WDA) OpenControlCenter( controlCenterMethod string ) {
     }    
 }
 
-func (self *WDA) StartBroadcastStream( appName string, controlCenterMethod string ) {
-  self.OpenControlCenter( controlCenterMethod )
-  time.Sleep( time.Second * 5 )
+func (self *WDA) StartBroadcastStream( appName string, bid string ) {//, controlCenterMethod string ) {
+  sid := self.create_session( bid )
+  self.sessionId = sid
   
-  devEl := self.ElByName( "Screen Recording" )
-  fmt.Printf("Selecting Screen Recording; el=%s\n", devEl )
-  //self.ElForceTouch( devEl, 2000 )
-  self.ElLongTouch( devEl )
+  toSelector := self.ElByName( "  Broadcast Selector" )
+  self.ElClick( toSelector )
   
-  time.Sleep( time.Second * 2 )
-  
-  appEl := self.ElByName( appName )
-  self.ElClick( appEl )
+  time.Sleep( time.Second * 4 )
+  self.Source()
   
   startBtn := self.ElByName( "Start Broadcast" )
   self.ElClick( startBtn )

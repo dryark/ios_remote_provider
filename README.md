@@ -1,5 +1,6 @@
 # Provider
-Provider streams the iOS devices for controlfloor. This bridges the phone to the browser.
+Provider connects iOS devices to ControlFloor. This sets up video streaming from iOS devices to the browser,
+and also enables the devices to be controlled remotely.
 
 # Basic Install Instructions
 ## Clone repos
@@ -32,32 +33,26 @@ Open `https://yourip:8080` to see if controlfloor is running
 ## Register Provider
 1. `./main register`
 
-## Build and setup iOS Video App
+## Build and setup CF Vidstream App
 1. `cd ios_video_app`
-1. Open the xcode project and install vidtest2 on the device
-1. Use Settings on the device to add "Screen Recording" to your Control Center if you haven't already. - https://www.youtube.com/watch?v=aWF-0Xdt3co
+1. Open the xcode project and install CF Vidstream on the device
 
-## Start iOS Video App
-1. Open the Control Center on your device ( how depends on your device type )
-1. Select Screen Recording
-1. Choose vidtest2
+## Start CF Vidstream App Manually
+1. Open the app
+1. Click "Broadcast Selector"
 1. Click "Start Recording"
 
 ## Start Provider
 1. `cd ios_remote_provider`
 1. `./main run`
 
-## Automatically starting Video App
+## Automatically starting CF Vidstream App
 1. Figure out your device id  
     A. `./bin/iosif list`  
 1. Figure out your device UI width/height  
-    This is the output of the `/session/[sid]/window/size` WDA command.  
-  
-    You may consider using the https://github.com/nanoscopic/ios_controller script to run this command easily. The window_size() function within `test.pl` of that repo does so.  
-  
-    Alternatively you can use curl/wget to directly make calls against WDA to create a session and then make the call. 
-1. Figure out how Control Center is reached on your device.  
-    It will be by swiping up from the bottom center of the screen, or down from the top right of the screen.
+    A. `./main winsize`
+    B. -or- `./main winsize -id [your device id]` 
+    C. Observe "Width" and "Height" displayed
 1. Add device specific config block to `config.json`:  
     ```  
     {
@@ -67,8 +62,6 @@ Open `https://yourip:8080` to see if controlfloor is running
                 udid:"[your device id]"
                 uiWidth:[your device width]
                 uiHeight:[your device height]
-                // bottomUp or topDown
-                controlCenterMethod:"bottomUp"
             }
         ]
     }

@@ -264,20 +264,28 @@ func (self *Device) enableVideo() {
         return
     }
     
-    self.wda.ensureSession()
+    //self.wda.ensureSession()
     
-    controlCenterMethod := "bottomUp"
-    if self.devConfig != nil {
-        controlCenterMethod = self.devConfig.controlCenterMethod
-    }
+    //controlCenterMethod := "bottomUp"
+    //if self.devConfig != nil {
+    //    controlCenterMethod = self.devConfig.controlCenterMethod
+    //}
     
     // if video app is not running, check if it is installed
-    installInfo := self.bridge.AppInfo(
-       self.config.vidAppBidPrefix + "." + self.config.vidAppBid,
-    )
-    // if installed, start it
+    
+    bid := self.config.vidAppBidPrefix + "." + self.config.vidAppBid
+    
+    installInfo := self.bridge.AppInfo( bid )
+    // if installed, start it                                             
     if installInfo != nil {
-        self.wda.StartBroadcastStream( self.config.vidAppName, controlCenterMethod )
+        version := installInfo.Get("CFBundleShortVersionString").String()
+        
+        if version != "1.1" {
+            fmt.Printf("Installed CF Vidstream app is version %s; must be version 1.1\n", version)
+            panic("Wrong vidstream version")
+        }
+      
+        self.wda.StartBroadcastStream( self.config.vidAppName, bid )//, controlCenterMethod )
         self.vidMode = VID_APP
         return
     }
@@ -286,7 +294,7 @@ func (self *Device) enableVideo() {
     // install it, then start it
     success := self.bridge.InstallApp( "vidstream.xcarchive/Products/Applications/vidstream.app" )
     if success {
-        self.wda.StartBroadcastStream( self.config.vidAppName, controlCenterMethod )
+        self.wda.StartBroadcastStream( self.config.vidAppName, bid )//, controlCenterMethod )
         self.vidMode = VID_APP
         return
     }
