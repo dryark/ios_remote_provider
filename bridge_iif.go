@@ -469,6 +469,7 @@ func (self *IIFDev) wdaGoIos( port int, onStart func(), onStop func(interface{})
             "--bundleid", bi,
             "--testrunnerbundleid", bi,
             "--xctestconfig", "WebDriverAgentRunner.xctest",
+            "--udid", self.udid,
         },
         stdoutHandler: func( line string, plog *log.Entry ) {
             if strings.Contains(line, "Test Case '-[UITestingUITests testRunner]' started") {
@@ -523,9 +524,10 @@ func (self *IIFDev) wdaTidevice( port int, onStart func(), onStop func(interface
         procName: "wda",
         binary: tiPath,
         args: []string{
+            "-u", self.udid,
             "wdaproxy",
             "-B", bi,
-            "-p", "0",
+            "-p", "0",            
         },
         stderrHandler: func( line string, plog *log.Entry ) {
             if strings.Contains(line, "WebDriverAgent start successfully") {
