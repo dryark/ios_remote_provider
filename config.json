@@ -26,7 +26,7 @@
             provisioningProfile: "" // specify when buildStyle is Manual
         }
     },
-    vidtest: {
+    vidapp: {
         devTeamOu: "[your dev team ou]"
         bundleIdPrefix: "com.dryark"
     }
