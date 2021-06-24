@@ -145,10 +145,10 @@ func (self *IIFDev) tunnel( pairs []TunPair, onready func() ) {
       }
     },
     stderrHandler: func( line string, plog *log.Entry ) {
-      fmt.Println( "tunnel err:%s", line )
+      fmt.Printf( "tunnel err:%s\n", line )
     },
     onStop: func( interface{} ) {
-      log.Println("%s stopped", tunName)
+      log.Printf("%s stopped\n", tunName)
     },
   }
   proc_generic( self.procTracker, nil, &o )
@@ -461,16 +461,20 @@ func (self *IIFDev) wdaGoIos( port int, onStart func(), onStop func(interface{})
     biPrefix := config.wdaPrefix
     bi := fmt.Sprintf( "%s.WebDriverAgentRunner.xctrunner", biPrefix )
     
+    args := []string{
+        "runwda",
+        "--bundleid", bi,
+        "--testrunnerbundleid", bi,
+        "--xctestconfig", "WebDriverAgentRunner.xctest",
+        "--udid", self.udid,
+    }
+    
+    fmt.Fprintf( f, "Starting WDA via %s with args %s\n", "bin/go-ios", strings.Join( args, " " ) )
+    
     o := ProcOptions {
         procName: "wda",
         binary: "bin/go-ios",
-        args: []string{
-            "runwda",
-            "--bundleid", bi,
-            "--testrunnerbundleid", bi,
-            "--xctestconfig", "WebDriverAgentRunner.xctest",
-            "--udid", self.udid,
-        },
+        args: args,
         stdoutHandler: func( line string, plog *log.Entry ) {
             if strings.Contains(line, "Test Case '-[UITestingUITests testRunner]' started") {
                 plog.WithFields( log.Fields{
@@ -520,15 +524,19 @@ func (self *IIFDev) wdaTidevice( port int, onStart func(), onStop func(interface
     biPrefix := config.wdaPrefix
     bi := fmt.Sprintf( "%s.WebDriverAgentRunner.xctrunner", biPrefix )
     
+    args := []string{
+        "-u", self.udid,
+        "wdaproxy",
+        "-B", bi,
+        "-p", "0",            
+    }
+    
+    fmt.Fprintf( f, "Starting WDA via %s with args %s\n", tiPath, strings.Join( args, " " ) )
+    
     o := ProcOptions {
         procName: "wda",
         binary: tiPath,
-        args: []string{
-            "-u", self.udid,
-            "wdaproxy",
-            "-B", bi,
-            "-p", "0",            
-        },
+        args: args,
         stderrHandler: func( line string, plog *log.Entry ) {
             if strings.Contains(line, "WebDriverAgent start successfully") {
                 plog.WithFields( log.Fields{

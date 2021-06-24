@@ -16,9 +16,9 @@ import (
 )
 
 type ImageConsumer struct {
-    consumer func( string, []byte ) (error)
+    consumer  func( string, []byte ) (error)
     noframesf func()
-    udid string
+    udid      string
 }
 
 func NewImageConsumer( consumer func( string, []byte ) (error), noframes func() ) (*ImageConsumer) {
@@ -50,15 +50,17 @@ type AppStream struct {
     vidSpec string
     udid string
     controlSocket mangos.Socket
+    device *Device
 }
 
-func NewAppStream( stopChan chan bool, controlPort int, vidPort int, udid string ) (*AppStream) {
+func NewAppStream( stopChan chan bool, controlPort int, vidPort int, udid string, device *Device ) (*AppStream) {
     self := &AppStream{
         stopChan: stopChan,
-        imgHandler: NewImgHandler( stopChan, udid ),
+        imgHandler: NewImgHandler( stopChan, udid, device ),
         controlSpec: fmt.Sprintf( "tcp://127.0.0.1:%d", controlPort ),
         vidSpec: fmt.Sprintf( "tcp://127.0.0.1:%d", vidPort ),
         udid: udid,
+        device: device,
     }
     return self
 }

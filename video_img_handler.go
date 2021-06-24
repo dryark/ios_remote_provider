@@ -23,9 +23,11 @@ type ImgHandler struct {
     enableStream  func()
     disableStream func()
     udid          string
+    device      *Device
+    isUp        bool
 }
 
-func NewImgHandler( stopChan chan bool, udid string ) ( *ImgHandler ) {
+func NewImgHandler( stopChan chan bool, udid string, device *Device ) ( *ImgHandler ) {
     self := ImgHandler {
         inSock:      nil,
         stopChan:    stopChan,
@@ -33,6 +35,8 @@ func NewImgHandler( stopChan chan bool, udid string ) ( *ImgHandler ) {
         discard:     true,
         imgNum:      1,
         udid:        udid,
+        device:      device,
+        isUp:        false,
     }
     return &self
 }
@@ -108,6 +112,11 @@ func ( self *ImgHandler ) processImgMsg() (int) {
         
         text = fmt.Sprintf("Width: %d, Height: %d, Size: %d\n", dw, dh, len( msg.Body ) )
         
+        if !self.isUp {
+            self.isUp = true
+            self.device.EventCh <- DevEvent{ action: DEV_VIDEO_START }
+        }
+        
         if !self.sentSize {
             json := fmt.Sprintf( `{"type":"frame1","width":%d,"height":%d,"uuid":"%s"}`, dw, dh, self.udid ) 
             fmt.Printf("FIRSTFRAME%s\n",json)
@@ -145,6 +154,8 @@ func ( self *ImgHandler ) mainLoop( vidStopChan chan bool, controlStopChan chan 
                 goto DONE
             case <- vidStopChan:
                 fmt.Printf("Lost connection to video stream\n")
+                self.isUp = false
+                self.device.EventCh <- DevEvent{ action: DEV_VIDEO_STOP }
                 res = 2
                 goto DONE
             case <- self.stopChan:

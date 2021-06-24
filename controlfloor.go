@@ -419,6 +419,20 @@ func (self *ControlFloor) notifyWdaStarted( udid string ) {
     } )
 }
 
+func (self *ControlFloor) notifyVideoStopped( udid string ) {
+    self.baseNotify("video stop", udid, url.Values{
+        "status": {"videoStopped"},
+        "udid": {udid},
+    } )
+}
+
+func (self *ControlFloor) notifyVideoStarted( udid string ) {
+    self.baseNotify("video start", udid, url.Values{
+        "status": {"videoStarted"},
+        "udid": {udid},
+    } )
+}
+
 func (self *ControlFloor) checkLogin() (bool) {
     self.lock.Lock()
     ready := self.ready

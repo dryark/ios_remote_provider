@@ -147,8 +147,10 @@ func (self *Device) startEventLoop() {
                     self.wdaRunning = false
                     self.cf.notifyWdaStopped( self.udid )
                 } else if action == DEV_VIDEO_START { // first video frame
+                    self.cf.notifyVideoStarted( self.udid )
                     self.onFirstFrame( &event )
                 } else if action == DEV_VIDEO_STOP {
+                    self.cf.notifyVideoStopped( self.udid )
                 } else if action == DEV_ALERT_APPEAR {
                     self.enableBackupVideo()
                 } else if action == DEV_ALERT_GONE {
@@ -251,7 +253,7 @@ func (self *Device) startProcs() {
 
 func (self *Device) startProcs2() {
     self.appStreamStopChan = make( chan bool )
-    self.vidStreamer = NewAppStream( self.appStreamStopChan, self.vidControlPort, self.vidPort, self.udid )
+    self.vidStreamer = NewAppStream( self.appStreamStopChan, self.vidControlPort, self.vidPort, self.udid, self )
     self.vidStreamer.mainLoop()
 }
 
