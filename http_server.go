@@ -4,6 +4,7 @@ import (
     "bytes"
     "fmt"
     "net/http"
+    "strconv"
     "strings"
     
     uj "github.com/nanoscopic/ujsonin/v2/mod"
@@ -23,8 +24,12 @@ func startServer( devTracker *DeviceTracker, listen_addr string ) {
     frameClosure := func( w http.ResponseWriter, r *http.Request ) {
         onFrame( w, r, devTracker )
     }
+    backupFrameClosure := func( w http.ResponseWriter, r *http.Request ) {
+        onBackupFrame( w, r, devTracker )
+    }
     
     http.HandleFunc( "/frame", frameClosure )
+    http.HandleFunc( "/backupFrame", backupFrameClosure )
     
     err := http.ListenAndServe( listen_addr, nil )
     log.WithFields( log.Fields{
@@ -62,7 +67,43 @@ func onFrame( w http.ResponseWriter, r *http.Request, devTracker *DeviceTracker 
     fmt.Printf("String to parse:%s\n", str[:i] )
     
     firstFrameJSON( devTracker, bytes )
+}
+
+func onBackupFrame( w http.ResponseWriter, r *http.Request, devTracker *DeviceTracker ) {
+    r.ParseForm()
+    udid := r.Form.Get("udid")
+    if udid == "" {
+        fmt.Fprintf(w, "Udid not set\n")
+        return
+    }
     
+    fmt.Printf("Fetching backup frame: %s\n", udid )
+    
+    dev := devTracker.getDevice( udid )
+    if dev == nil {
+        w.Header().Set("Content-Type", "text/html")
+        fmt.Fprintf(w, "Could not find device with udid: %s<br>", udid )
+        fmt.Fprintf(w, "Available UDID:<br>")
+        for _, key := range devTracker.DevMap {
+            fmt.Fprintf(w, "%s<br>", key )
+        }
+        return
+    }
+    
+    pngData, errText := dev.getBackupFrame()
+    if errText != "" {
+        fmt.Fprintf(w, "Error: %s<br>\n", errText )
+        return
+    }
+    
+    if len( pngData ) == 0 {
+        fmt.Fprintf(w, "No data from frame server\n" )
+        return
+    }
+    
+    w.Header().Set("Content-Type", "image/png")
+    w.Header().Set("Content-Length", strconv.Itoa( len( pngData ) ) )
+    w.Write( pngData )
 }
 
 func deviceConnect( w http.ResponseWriter, r *http.Request, eventCh chan<- Event ) {

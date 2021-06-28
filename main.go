@@ -43,6 +43,11 @@ func main() {
     }
     uclop.AddCmd( "winsize", "Get device window size", runWindowSize, windowSizeOpts )
     
+    vidTestOpts := uc.OPTS{
+        uc.OPT("-id","Udid of device",0),
+    }
+    uclop.AddCmd( "vidtest", "Test backup video", runVidTest, vidTestOpts ) 
+    
     uclop.Run()
 }
 
@@ -64,6 +69,30 @@ func wdaForDev( id string ) (*WDA,*DeviceTracker) {
     return wda,tracker
 }
 
+func vidTestForDev( id string ) (*DeviceTracker) {
+    config := NewConfig( "config.json", "default.json", "calculated.json" )
+    
+    devs := GetDevs( config )
+    dev1 := id
+    if id == "" {
+        dev1 = devs[0]
+    }
+    fmt.Printf("Dev id: %s\n", dev1)
+    
+    tracker := NewDeviceTracker( config, false )
+    iifDev := NewIIFDev( tracker.bridge.(*IIFBridge), dev1, "x" )
+    dev := NewDevice( config, tracker, dev1, iifDev )
+    tracker.DevMap[ dev1 ] = dev
+    
+    iifDev.setProcTracker( tracker )
+    
+    dev.startBackupVideo()
+    
+    coroHttpServer( tracker )
+    
+    return tracker
+}
+
 func runWDA( cmd *uc.Cmd ) {
     runCleanup( cmd )
     
@@ -76,6 +105,20 @@ func runWDA( cmd *uc.Cmd ) {
     wda,tracker := wdaForDev( id )
     wda.start()
  
+    dotLoop( cmd, tracker )
+}
+
+func runVidTest( cmd *uc.Cmd ) {
+    runCleanup( cmd )
+    
+    id := ""
+    idNode := cmd.Get("-id")
+    if idNode != nil {
+      id = idNode.String()
+    }
+    
+    tracker := vidTestForDev( id )
+    
     dotLoop( cmd, tracker )
 }
 
@@ -104,6 +147,8 @@ func dotLoop( cmd *uc.Cmd, tracker *DeviceTracker ) {
     
     runCleanup( cmd )
 }
+
+
 
 func runClick( cmd *uc.Cmd ) {
     runCleanup( cmd )

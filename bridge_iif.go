@@ -2,15 +2,17 @@ package main
 
 import (
     "fmt"
+    "io/ioutil"
     uj "github.com/nanoscopic/ujsonin/v2/mod"
     log "github.com/sirupsen/logrus"
+    "net/http"
     "os"
     "os/exec"
     "strings"
     "strconv"
     //"time"
-    "go.nanomsg.org/mangos/v3"
-    nanoReq  "go.nanomsg.org/mangos/v3/protocol/req"
+    //"go.nanomsg.org/mangos/v3"
+    //nanoReq  "go.nanomsg.org/mangos/v3/protocol/req"
 )
 
 type IIFBridge struct {
@@ -288,7 +290,7 @@ func (self *IIFDev) screenshot() Screenshot {
 
 type BackupVideo struct {
     port int
-    sock mangos.Socket
+    //sock mangos.Socket
     spec string
     imgId int
 }
@@ -359,6 +361,7 @@ func (self *IIFDev) NewSyslogMonitor( handleLogItem func( uj.JNode ) ) {
 func (self *IIFDev) NewBackupVideo( port int, onStop func( interface{} ) ) ( *BackupVideo ) {
     vid := &BackupVideo{
         port: port,
+        spec: fmt.Sprintf( "http://127.0.0.1:%d", port ),
     }
     
     o := ProcOptions{
@@ -379,8 +382,9 @@ func (self *IIFDev) NewBackupVideo( port int, onStop func( interface{} ) ) ( *Ba
         stdoutHandler: func( line string, plog *log.Entry ) {
             if strings.Contains( line, "listening" ) {
                 plog.Println( line )
-                vid.openBackupStream()
+                //vid.openBackupStream()
             }
+            
             fmt.Println( line )
         },
         stderrHandler: func( line string, plog *log.Entry ) {
@@ -393,45 +397,15 @@ func (self *IIFDev) NewBackupVideo( port int, onStop func( interface{} ) ) ( *Ba
     return vid
 }
 
-func (self *BackupVideo) openBackupStream() {
-    var err error
-    
-    self.spec = fmt.Sprintf( "tcp://127.0.0.1:%d", self.port )
-    
-    if self.sock, err = nanoReq.NewSocket(); err != nil {
-        log.WithFields( log.Fields{
-            "type":     "err_socket_new",
-            "err":      err,
-        } ).Error("Backup video Socket new error")
-        return
-    }
-    
-    if err = self.sock.Dial( self.spec ); err != nil {
-        log.WithFields( log.Fields{
-            "type": "err_socket_dial",
-            "spec": self.spec,
-            "err":  err,
-        } ).Error("Backup video Socket dial error")
-        return
-    }
-    
-    self.sock.SetOption( mangos.OptionMaxRecvSize, 3000000 )
-}
-
 func (self *BackupVideo) GetFrame() []byte {
-    self.sock.Send([]byte( fmt.Sprintf("img:%d",self.imgId) ) )
-    self.imgId++
-    
-    msg, err := self.sock.RecvMsg()
+    resp, err := http.Get( self.spec )
     if err != nil {
-        log.WithFields( log.Fields{
-            "type":     "err_socket_recv",
-            "zmq_spec": self.spec,
-            "err":      err,
-        } ).Info("Backup video recv err")
+        panic(err)
     }
-    
-    return msg.Body
+    defer resp.Body.Close()
+    data, err := ioutil.ReadAll( resp.Body )
+        
+    return data
 }
 
 func (self *IIFDev) wda( port int, onStart func(), onStop func(interface{}) ) {

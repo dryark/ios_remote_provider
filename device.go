@@ -170,8 +170,10 @@ func (self *Device) startBackupFrameProvider() {
                 action := ev.action
                 if action == VID_ENABLE { // begin sending backup frames
                     sending = true
+                    fmt.Printf("backup video frame sender - enabling\n")
                 } else if action == VID_DISABLE {
                     sending = false
+                    fmt.Printf("backup video frame sender - disabling\n")
                 } else if action == VID_END {
                     break
                 }
@@ -188,26 +190,43 @@ func (self *Device) startBackupFrameProvider() {
 }
 
 func (self *Device) disableBackupVideo() {
+    fmt.Printf("Sending vid_disable\n")
     self.BackupCh <- BackupEvent{ action: VID_DISABLE }
+    fmt.Printf("Sent vid_disable\n")
     self.vidMode = VID_APP
     self.backupActive = false
 }
 
 func (self *Device) enableBackupVideo() {
+    fmt.Printf("Sending vid_enable\n")
     self.BackupCh <- BackupEvent{ action: VID_ENABLE }
+    fmt.Printf("Sent vid_enable\n")
     self.vidMode = VID_BRIDGE
     self.backupActive = true
 }
 
 func (self *Device) sendBackupFrame() {
     if self.vidOut != nil {
-        //fmt.Printf("Fetching frame - ")
+        fmt.Printf("Fetching frame - ")
         pngData := self.backupVideo.GetFrame()
-        //fmt.Printf("%d bytes\n", len( pngData ) )
+        fmt.Printf("%d bytes\n", len( pngData ) )
         if( len( pngData ) > 0 ) {
             self.vidOut.WriteMessage( ws.BinaryMessage, pngData )
         }
     }
+}
+
+func (self *Device) getBackupFrame() ( []byte, string) {
+    if self == nil {
+        return []byte{}, "wtf"
+    }
+    if self.backupVideo == nil {
+        return []byte{}, "backup video not set on device object"
+    }
+    
+    pngData := self.backupVideo.GetFrame()
+    
+    return pngData, ""
 }
 
 func (self *Device) stopEventLoop() {
@@ -217,6 +236,13 @@ func (self *Device) stopEventLoop() {
 func (self *Device) startup() {
     self.startEventLoop()
     self.startProcs()
+}
+
+func (self *Device) startBackupVideo() {
+    self.backupVideo = self.bridge.NewBackupVideo( 
+        self.backupVideoPort,
+        func( interface{} ) {}, // onStop
+    )
 }
 
 func (self *Device) startProcs() {
@@ -242,7 +268,7 @@ func (self *Device) startProcs() {
             self.EventCh <- DevEvent{ action: DEV_ALERT_APPEAR }
         } else if strings.Contains( msg, "deactivate alertItem: <SBUserNotificationAlert" ) {
             fmt.Printf("Alert went away\n")
-            self.EventCh <- DevEvent{ action: DEV_ALERT_APPEAR }
+            self.EventCh <- DevEvent{ action: DEV_ALERT_GONE }
         }
     } )
     

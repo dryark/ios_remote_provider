@@ -8,7 +8,7 @@
     wda: {
         // Your Apple Developer Team OU
         // If you don't know this, you can find it by running ./util/signers.pl
-        devTeamOu: "[your dev team ou]"
+        devTeamOu: "7628766FL2"
         
         // Some unique Bundle ID prefix to usefor the Bundle IDs for WebDriverAgent
         // This default, "com.appium", will likely work for paid developer accounts
@@ -25,10 +25,19 @@
             buildStyle: "Automatic" // or "Manual"
             provisioningProfile: "" // specify when buildStyle is Manual
         }
+        
+        startMethod: "tidevice"
     },
     vidapp: {
-        devTeamOu: "[your dev team ou]"
+        devTeamOu: "7628766FL2"
         bundleIdPrefix: "com.dryark"
-    }
-
+    },
+    devices: [
+        {
+            udid: "00008020-001D4D661E04003A"
+            uiWidth: 414
+            uiHeight: 896
+            controlCenterMethod: "topDown"
+        }
+    ]
 }
