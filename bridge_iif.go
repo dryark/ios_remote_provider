@@ -1,10 +1,15 @@
 package main
 
 import (
+    "bytes"
+    "bufio"
     "fmt"
-    "io/ioutil"
+    //"io/ioutil"
+    "image/png"
+    "image/jpeg"
     uj "github.com/nanoscopic/ujsonin/v2/mod"
     log "github.com/sirupsen/logrus"
+    nr "github.com/nfnt/resize"
     "net/http"
     "os"
     "os/exec"
@@ -403,9 +408,16 @@ func (self *BackupVideo) GetFrame() []byte {
         panic(err)
     }
     defer resp.Body.Close()
-    data, err := ioutil.ReadAll( resp.Body )
-        
-    return data
+    //data, _ := ioutil.ReadAll( resp.Body )
+    
+    img, _ := png.Decode( resp.Body ) 
+    img2 := nr.Resize( 0, 1000, img, nr.Lanczos3 )
+    
+    jpegBytes := bytes.Buffer{}
+    writer := bufio.NewWriter( &jpegBytes )
+    jpeg.Encode( writer, img2, nil )
+    
+    return jpegBytes.Bytes()
 }
 
 func (self *IIFDev) wda( port int, onStart func(), onStop func(interface{}) ) {

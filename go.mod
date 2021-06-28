@@ -11,6 +11,7 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/nanoscopic/uclop v1.1.0
 	github.com/nanoscopic/ujsonin/v2 v2.0.4
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/sirupsen/logrus v1.7.0
 	go.nanomsg.org/mangos/v3 v3.1.3
 )
