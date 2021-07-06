@@ -31,60 +31,63 @@ const (
     DEV_VIDEO_STOP
     DEV_ALERT_APPEAR
     DEV_ALERT_GONE
+    DEV_APP_CHANGED
 )
 
 type Device struct {
-    udid        string
-    name        string
-    lock        *sync.Mutex
-    wdaPort     int
-    vidPort     int
+    udid            string
+    name            string
+    lock            *sync.Mutex
+    wdaPort         int
+    vidPort         int
     vidControlPort  int
     backupVideoPort int
-    iosVersion  string
-    productType string
-    productNum  string
-    vidWidth    int
-    vidHeight   int
-    vidMode     int
-    process     map[string] *GenericProc
-    owner       string
-    connected   bool
-    EventCh     chan DevEvent
-    BackupCh    chan BackupEvent
-    wda         *WDA
-    wdaRunning  bool
-    devTracker  *DeviceTracker
-    config      *Config
-    devConfig   *CDevice
-    cf          *ControlFloor
-    info        map[string] string
-    vidStreamer VideoStreamer
+    mjpegVideoPort  int
+    iosVersion      string
+    productType     string
+    productNum      string
+    vidWidth        int
+    vidHeight       int
+    vidMode         int
+    process         map[string] *GenericProc
+    owner           string
+    connected       bool
+    EventCh         chan DevEvent
+    BackupCh        chan BackupEvent
+    wda             *WDA
+    wdaRunning      bool
+    devTracker      *DeviceTracker
+    config          *Config
+    devConfig       *CDevice
+    cf              *ControlFloor
+    info            map[string] string
+    vidStreamer     VideoStreamer
     appStreamStopChan chan bool
-    vidOut      *ws.Conn
-    bridge      BridgeDev
-    backupVideo *BackupVideo
-    backupActive bool
+    vidOut          *ws.Conn
+    bridge          BridgeDev
+    backupVideo     *BackupVideo
+    backupActive    bool
 }
 
 func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev BridgeDev ) (*Device) {
     dev := Device{
-        devTracker: devTracker,
-        wdaPort:    devTracker.getPort(),
-        vidPort:    devTracker.getPort(),
-        vidMode:    VID_NONE,
+        devTracker:      devTracker,
+        wdaPort:         devTracker.getPort(),
+        vidPort:         devTracker.getPort(),
+        vidMode:         VID_NONE,
         vidControlPort:  devTracker.getPort(),
         backupVideoPort: devTracker.getPort(),
-        backupActive: false,
-        config:     config,
-        udid:       udid,
-        lock:       &sync.Mutex{},
-        process:    make( map[string] *GenericProc ),
-        cf:         devTracker.cf,
-        EventCh:    make( chan DevEvent ),
-        BackupCh:   make( chan BackupEvent ),
-        bridge:     bdev,
-        wdaRunning: false,
+        mjpegVideoPort:  devTracker.getPort(),
+        backupActive:    false,
+        config:          config,
+        udid:            udid,
+        lock:            &sync.Mutex{},
+        process:         make( map[string] *GenericProc ),
+        cf:              devTracker.cf,
+        EventCh:         make( chan DevEvent ),
+        BackupCh:        make( chan BackupEvent ),
+        bridge:          bdev,
+        wdaRunning:      false,
     }
     if devConfig, ok := config.devs[udid]; ok {
         dev.devConfig = &devConfig
@@ -155,6 +158,8 @@ func (self *Device) startEventLoop() {
                     self.enableBackupVideo()
                 } else if action == DEV_ALERT_GONE {
                     self.disableBackupVideo()
+                } else if action == DEV_APP_CHANGED {
+                    self.devAppChanged() 
                 }
             }
         }
@@ -245,9 +250,17 @@ func (self *Device) startBackupVideo() {
     )
 }
 
+func (self *Device) devAppChanged() {
+    if self.wda == nil {
+        return
+    }
+    
+    self.wda.AppChanged()
+}
+
 func (self *Device) startProcs() {
     // start wda
-    self.wda = NewWDA( self.config, self.devTracker, self, self.wdaPort )
+    self.wda = NewWDA( self.config, self.devTracker, self )
     
     self.startBackupFrameProvider() // just the timed loop
     self.backupVideo = self.bridge.NewBackupVideo( 
@@ -260,15 +273,22 @@ func (self *Device) startProcs() {
     
     self.bridge.NewSyslogMonitor( func( root uj.JNode ) {
         msg := root.GetAt( 3 ).String()
-        
+        app := root.GetAt( 1 ).String()
         //fmt.Printf("Msg:%s\n", msg )
         
-        if strings.Contains( msg, "Presenting <SBUserNotificationAlert" ) {
-            fmt.Printf("Alert appeared\n")
-            self.EventCh <- DevEvent{ action: DEV_ALERT_APPEAR }
-        } else if strings.Contains( msg, "deactivate alertItem: <SBUserNotificationAlert" ) {
-            fmt.Printf("Alert went away\n")
-            self.EventCh <- DevEvent{ action: DEV_ALERT_GONE }
+        if app == "SpringBoard(SpringBoard)" {
+            if strings.Contains( msg, "Presenting <SBUserNotificationAlert" ) {
+                fmt.Printf("Alert appeared\n")
+                self.EventCh <- DevEvent{ action: DEV_ALERT_APPEAR }
+            } else if strings.Contains( msg, "deactivate alertItem: <SBUserNotificationAlert" ) {
+                fmt.Printf("Alert went away\n")
+                self.EventCh <- DevEvent{ action: DEV_ALERT_GONE }
+            }
+        } else if app == "dasd" {
+            if strings.HasPrefix( msg, "Foreground apps changed" ) {
+                fmt.Printf("App changed\n")
+                self.EventCh <- DevEvent{ action: DEV_APP_CHANGED }
+            }
         }
     } )
     

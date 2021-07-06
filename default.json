@@ -25,6 +25,7 @@
             provisioningProfile: "" // specify when buildStyle is Manual
         }
         startMethod: "go-ios"
+        keyMethod: "iohid"
     },
     vidapp: {
         name: "CF Vidstream"

@@ -65,7 +65,8 @@ func wdaForDev( id string ) (*WDA,*DeviceTracker) {
     iifDev := NewIIFDev( tracker.bridge.(*IIFBridge), dev1, "x" )
     dev := NewDevice( config, tracker, dev1, iifDev )
     iifDev.setProcTracker( tracker )
-    wda := NewWDANoStart( config, tracker, dev, 8100 )
+    dev.wdaPort = 8100
+    wda := NewWDANoStart( config, tracker, dev )
     return wda,tracker
 }
 

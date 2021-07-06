@@ -29,6 +29,7 @@ type Config struct {
     wdaPath      string
     tidevicePath string
     wdaMethod    string
+    wdaKeyMethod string
     wdaPrefix    string
     vidAppName   string
     vidAppBid    string
@@ -75,10 +76,11 @@ func NewConfig( configPath string, defaultsPath string, calculatedPath string ) 
     config.selfSigned = GetBool( root, "controlfloor.selfSigned" )
     config.wdaPath    = GetStr(  root, "bin_paths.wda" )
     config.wdaMethod  = GetStr(  root, "wda.startMethod" )
-    config.wdaPrefix  = GetStr(  root, "wda.bundleIdPrefix" )
-    config.vidAppName = GetStr(  root, "vidapp.name" )
-    config.vidAppBid = GetStr( root, "vidapp.bundleId" )
-    config.vidAppExtBid = GetStr( root, "vidapp.extBundleId" )
+    config.wdaKeyMethod    = GetStr( root, "wda.keyMethod" )
+    config.wdaPrefix       = GetStr( root, "wda.bundleIdPrefix" )
+    config.vidAppName      = GetStr( root, "vidapp.name" )
+    config.vidAppBid       = GetStr( root, "vidapp.bundleId" )
+    config.vidAppExtBid    = GetStr( root, "vidapp.extBundleId" )
     config.vidAppBidPrefix = GetStr( root, "vidapp.bundleIdPrefix" )
     
     tideviceNode := root.Get( "tidevice" )

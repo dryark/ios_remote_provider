@@ -21,30 +21,30 @@ import (
 )
 
 type IIFBridge struct {
-  onConnect func( dev BridgeDev ) ProcTracker
+  onConnect    func( dev BridgeDev ) ProcTracker
   onDisconnect func( dev BridgeDev )
-  cli string
-  devs map[string]*IIFDev
-  procTracker ProcTracker
-  config *Config
+  cli          string
+  devs         map[string]*IIFDev
+  procTracker  ProcTracker
+  config       *Config
 }
 
 type IIFDev struct {
-  bridge *IIFBridge
-  udid string
-  name string
+  bridge      *IIFBridge
+  udid        string
+  name        string
   procTracker ProcTracker
 }
 
 // IosIF bridge
 func NewIIFBridge( config *Config, OnConnect func( dev BridgeDev ) (ProcTracker), OnDisconnect func( dev BridgeDev ), iosIfPath string, procTracker ProcTracker, detect bool ) ( *IIFBridge ) {
   self := &IIFBridge{
-    onConnect: OnConnect,
+    onConnect:    OnConnect,
     onDisconnect: OnDisconnect,
-    cli: iosIfPath,
-    devs: make( map[string]*IIFDev ),
-    procTracker: procTracker,
-    config: config,
+    cli:          iosIfPath,
+    devs:         make( map[string]*IIFDev ),
+    procTracker:  procTracker,
+    config:       config,
   }
   if detect { self.startDetect() }
   return self
@@ -310,6 +310,7 @@ func (self *IIFDev) NewSyslogMonitor( handleLogItem func( uj.JNode ) ) {
             "log",
             "-id", self.udid,
             "proc", "SpringBoard(SpringBoard)",
+            "proc", "dasd",
         },
         startFields: log.Fields{
             "id": self.udid,
@@ -420,21 +421,21 @@ func (self *BackupVideo) GetFrame() []byte {
     return jpegBytes.Bytes()
 }
 
-func (self *IIFDev) wda( port int, onStart func(), onStop func(interface{}) ) {
+func (self *IIFDev) wda( port int, onStart func(), onStop func(interface{}), mjpegPort int ) {
     config := self.bridge.config
     method := config.wdaMethod
     
     if method == "go-ios" {
-        self.wdaGoIos( port, onStart, onStop )
+        self.wdaGoIos( port, onStart, onStop, mjpegPort )
     } else if method == "tidevice" {
-        self.wdaTidevice( port, onStart, onStop )
+        self.wdaTidevice( port, onStart, onStop, mjpegPort )
     } else {
         fmt.Printf("Unknown wda start method %s\n", method )
         os.Exit(1)
     }
 }
 
-func (self *IIFDev) wdaGoIos( port int, onStart func(), onStop func(interface{}) ) {
+func (self *IIFDev) wdaGoIos( port int, onStart func(), onStop func(interface{}), mjpegPort int ) {
     f, err := os.OpenFile("wda.log",
         os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
     if err != nil {
@@ -489,7 +490,7 @@ func (self *IIFDev) wdaGoIos( port int, onStart func(), onStop func(interface{})
     proc_generic( self.procTracker, nil, &o )
 }
 
-func (self *IIFDev) wdaTidevice( port int, onStart func(), onStop func(interface{}) ) {
+func (self *IIFDev) wdaTidevice( port int, onStart func(), onStop func(interface{}), mjpegPort int ) {
     config := self.bridge.config
     tiPath := config.tidevicePath
     
@@ -514,7 +515,8 @@ func (self *IIFDev) wdaTidevice( port int, onStart func(), onStop func(interface
         "-u", self.udid,
         "wdaproxy",
         "-B", bi,
-        "-p", "0",            
+        "-p", "0",
+        "-e", fmt.Sprintf("MJPEG_SERVER_PORT:%d",mjpegPort), 
     }
     
     fmt.Fprintf( f, "Starting WDA via %s with args %s\n", tiPath, strings.Join( args, " " ) )

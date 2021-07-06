@@ -210,6 +210,7 @@ func ( self *ControlFloor ) openWebsocket() {
             case resp := <- respondChan:
                 rText := resp.asText()
                 err := conn.WriteMessage( ws.TextMessage, []byte(rText) )
+                //fmt.Printf( "Wrote response back: %s\n", rText )
                 if err != nil {
                     fmt.Printf("Error writing to ws\n")
                     break
@@ -293,6 +294,7 @@ func ( self *ControlFloor ) openWebsocket() {
                         if dev != nil {
                             dev.keys( keys )
                         }
+                        respondChan <- &CFR_Pong{ id: id, text: "done" }
                     } ()
                 } else if mType == "startStream" {
                     udid := root.Get("udid").String()
