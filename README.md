@@ -3,6 +3,7 @@ Provider connects iOS devices to ControlFloor. This sets up video streaming from
 and also enables the devices to be controlled remotely.
 
 # Basic Install Instructions
+
 ## Clone repos
 1. `git clone https://github.com/nanoscopic/ios_remote_provider.git`
 1. `git clone https://github.com/nanoscopic/controlfloor.git`
@@ -25,6 +26,7 @@ Open `https://yourip:8080` to see if controlfloor is running
 
 ## Build iOS Remote Provider and WDA
 1. `cd ios_remote_provider`
+1. Copy example config: `cp config.json.example config.json`
 1. Edit `config.json` to add your Apple developer details
 1. `make`
 1. `security unlock-keychain login.keychain` # to make sure developer details are there for xcode build
