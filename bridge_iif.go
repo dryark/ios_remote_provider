@@ -184,8 +184,10 @@ func (self *IIFDev) GetPid( appname string ) int {
     return 0
   }
   
-  json = []byte( strings.ReplaceAll( string( json ), "i16.", "" ) );
-  root, _ := uj.Parse( json )
+  jsonS := string( json )
+  jsonS = strings.ReplaceAll( jsonS, "i16.", "" )
+  jsonS = strings.ReplaceAll( jsonS, "i32.", "" )
+  root, _ := uj.Parse( []byte( jsonS ) )
   pidNode := root.Get("pid")
   if pidNode == nil { return 0 }
   return pidNode.Int()

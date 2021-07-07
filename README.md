@@ -35,6 +35,7 @@ Open `https://yourip:8080` to see if controlfloor is running
 
 ## Register Provider
 1. `./main register`
+1. Press [enter] to register using the default password
 
 ## Build and setup CF Vidstream App
 1. `cd ios_video_app`
