@@ -17,8 +17,9 @@ and also enables the devices to be controlled remotely.
 1. `make install`
 
 ## Build ControlFloor
-
 1. `cd controlfloor`
+1. Copy example config: `cp config.json.example config.json`
+1. Edit `config.json` as desired
 1. `make`
 1. `./main run`
 
