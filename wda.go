@@ -76,24 +76,26 @@ func NewWDANoStart( config *Config, devTracker *DeviceTracker, dev *Device ) (*W
     jh[48] = 0x27 // 0
     jh[59] = 0x33 // ;
     jh[61] = 0x2e // =
-    jh[68] = 0x4c // delete
-    jh[72] = 0x4a // home
-    jh[84] = 0x2b // tab
     jh[91] = 0x2f // [
     jh[92] = 0x31 // \
     jh[93] = 0x30 // ]
     //jh[96] = // `
     
     jh[-8] = 0x2a // backspace
+    jh[-9] = 0x2b // tab
     jh[-13] = 0x28 // enter
     jh[-27] = 0x29 // esc
     jh[-33] = 0x4b // pageup
     jh[-34] = 0x4e // pagedown
     jh[-35] = 0x4d // end
+    jh[-36] = 0x4a // home
+    
     jh[-37] = 0x50 // left
     jh[-38] = 0x52 // up
     jh[-39] = 0x4f // right
     jh[-40] = 0x51 // down
+    jh[-46] = 0x4c // delete
+    
         
     return &self
 }
