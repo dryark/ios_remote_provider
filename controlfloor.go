@@ -245,6 +245,7 @@ func ( self *ControlFloor ) openWebsocket() {
                         if dev != nil {
                             dev.clickAt( x, y )
                         }
+                        respondChan <- &CFR_Pong{ id: id, text: "done" }
                     } ()
                 } else if mType == "hardPress" {
                     udid := root.Get("udid").String()
@@ -273,6 +274,7 @@ func ( self *ControlFloor ) openWebsocket() {
                         if dev != nil {
                             dev.home()
                         }
+                        respondChan <- &CFR_Pong{ id: id, text: "done" }
                     } ()
                 } else if mType == "swipe" {
                     udid := root.Get("udid").String()
@@ -280,11 +282,13 @@ func ( self *ControlFloor ) openWebsocket() {
                     y1 := root.Get("y1").Int()
                     x2 := root.Get("x2").Int()
                     y2 := root.Get("y2").Int()
+                    delay := root.Get("delay").Int()
                     go func() {
                         dev := self.DevTracker.getDevice( udid )
                         if dev != nil {
-                            dev.swipe( x1, y1, x2, y2 )
+                            dev.swipe( x1, y1, x2, y2, delay )
                         }
+                        respondChan <- &CFR_Pong{ id: id, text: "done" }
                     } ()
                 } else if mType == "keys" {
                     udid := root.Get("udid").String()

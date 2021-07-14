@@ -418,7 +418,19 @@ func (self *WDA) longPress( x int, y int ) {
 }
 
 func (self *WDA) home() (string) {
-    http.Post( self.base + "/wda/homescreen", "application/json", strings.NewReader( "{}" ) )
+    //http.Post( self.base + "/wda/homescreen", "application/json", strings.NewReader( "{}" ) )
+    
+    // No worky
+    //self.ioHid( 7, 0x223 )
+    //self.ioHid( 9, 1 )
+    
+    json := `{
+      "name": "home",
+      "duration": 0.05
+    }`
+    
+    http.Post( self.base + "/wda/pressButton", "application/json", strings.NewReader( json ) )
+    
     return ""  
 }
 
@@ -471,6 +483,18 @@ func (self *WDA) keysViaIohid( codes []int ) {
     }
 }
 
+func (self *WDA) ioHid( page int, code int ) {
+    json := fmt.Sprintf(`{
+      "page": %d,
+      "usage": %d,
+      "duration": 0.05
+    }`, page, code )
+        
+    log.Info( "sending " + json )
+        
+    http.Post( self.base + "/wda/performIoHidEvent", "application/json", strings.NewReader( json ) )
+}
+
 func (self *WDA) keysViaKeys( codes []int ) {
     strArr := []string{}
     /*
@@ -497,9 +521,9 @@ func (self *WDA) keysViaKeys( codes []int ) {
     self.sessionCall( "/wda/keyAT", json )
 }
 
-func ( self *WDA ) swipe( x1 int, y1 int, x2 int, y2 int ) {
-    log.Info( "Swiping:", x1, y1, x2, y2 )
-    json := fmt.Sprintf( `{
+func ( self *WDA ) swipe( x1 int, y1 int, x2 int, y2 int, delay float64 ) {
+    log.Info( "Swiping:", x1, y1, x2, y2, delay )
+    /*json := fmt.Sprintf( `{
     "actions": [
       {
         "action": "press",
@@ -528,7 +552,15 @@ func ( self *WDA ) swipe( x1 int, y1 int, x2 int, y2 int ) {
     ]
     }`, x1, y1, x2, y2 )
     
-    self.sessionCall( "/wda/touch/perform", json )
+    self.sessionCall( "/wda/touch/perform", json )*/
+    json := fmt.Sprintf( `{
+        "x1":%d,
+        "y1":%d,
+        "x2":%d,
+        "y2":%d,
+        "delay":%.2f
+    }`, x1, y1, x2, y2, delay )
+    http.Post( self.base + "/wda/swipe", "application/json", strings.NewReader( json ) )
 }
 
 func (self *WDA) ElClick( elId string ) {
@@ -624,10 +656,10 @@ func (self *WDA) OpenControlCenter( controlCenterMethod string ) {
     if controlCenterMethod == "bottomUp" {
         midx := width / 2
         maxy := height - 1
-        self.swipe( midx, maxy, midx, maxy - 100 )
+        self.swipe( midx, maxy, midx, maxy - 100, 0.05 )
     } else if controlCenterMethod == "topDown" {
         maxx := width - 1
-        self.swipe( maxx, 0, maxx, 100 )
+        self.swipe( maxx, 0, maxx, 100, 0.05 )
     }    
 }
 
