@@ -582,7 +582,7 @@ func (self *IIFDev) wdaGoIos( port int, onStart func(), onStop func(interface{})
             fmt.Fprintln( f, line )
         },
         stderrHandler: func( line string, plog *log.Entry ) {
-            if strings.Contains(line, "ServerURLHere") {
+            if strings.Contains(line, "NNG Ready") {
                 plog.WithFields( log.Fields{
                     "type": "wda_start",
                     "uuid": censorUuid(self.udid),
