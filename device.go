@@ -171,6 +171,12 @@ func (self *Device) startEventLoop() {
                     self.cf.notifyWdaStarted( self.udid )
                     self.wda.ensureSession()
                     // start video streaming
+                    
+                    self.forwardVidPorts( self.udid, func() {
+                        self.enableVideo()
+                        
+                        self.startProcs2()
+                    } )
                 } else if action == DEV_WDA_STOP { // WDA stopped
                     self.wdaRunning = false
                     self.cf.notifyWdaStopped( self.udid )
@@ -296,7 +302,6 @@ func (self *Device) startProcs() {
         func( interface{} ) {}, // onStop
     )
     
-    self.enableVideo()
     //self.enableBackupVideo()
     
     self.bridge.NewSyslogMonitor( func( root uj.JNode ) {
@@ -331,10 +336,6 @@ func (self *Device) startProcs() {
             }
         }
     } )
-    
-    self.forwardVidPorts( self.udid, func() {
-        self.startProcs2()
-    } )
 }
 
 func (self *Device) startProcs2() {
@@ -366,6 +367,7 @@ func (self *Device) enableVideo() {
     installInfo := self.bridge.AppInfo( bid )
     // if installed, start it                                             
     if installInfo != nil {
+        fmt.Printf("Attempting to start video app stream\n")
         version := installInfo.Get("CFBundleShortVersionString").String()
         
         if version != "1.1" {

@@ -124,6 +124,16 @@ func cleanup_procs( config *Config ) {
             syscall.Kill( pid, syscall.SIGTERM )
             hangingPids = append( hangingPids, pid ) 
         }
+        if strings.Contains( proc.cmd, "go-ios" ) {
+            pid := proc.pid //proc.PID()
+            plog.WithFields( log.Fields{
+                "proc": "go-ios",
+                "pid":  pid,
+            } ).Warn("Leftover go-ios - Sending SIGTERM")
+            
+            syscall.Kill( pid, syscall.SIGTERM )
+            hangingPids = append( hangingPids, pid ) 
+        }
     }
     
     if len( hangingPids ) > 0 {

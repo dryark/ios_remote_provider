@@ -29,6 +29,7 @@ type WDA struct {
     client        *http.Client
     nngPort       int
     nngSocket     mangos.Socket
+    disableUpdate bool
 }
 
 func NewWDA( config *Config, devTracker *DeviceTracker, dev *Device ) (*WDA) {
@@ -240,10 +241,12 @@ func ( self *WDA ) get_session() ( string ) {
 
 func ( self *WDA ) create_session( bundle string ) ( string ) {
     if bundle == "" {
-        bundle = "com.apple.Preferences"
+        //bundle = "com.apple.Preferences"
     }
     
     fmt.Printf("Creating session; bi=%s\n", bundle )
+    
+    self.disableUpdate = true
     
     json := fmt.Sprintf( `{
       action: "createSession"
@@ -258,8 +261,10 @@ func ( self *WDA ) create_session( bundle string ) ( string ) {
     
     sessionIdBytes, err := self.nngSocket.Recv()
     if err != nil {
-        fmt.Printf( "sessionCreate err: %s", err )
+        fmt.Printf( "sessionCreate err: %s\n", err )
     }
+    
+    self.disableUpdate = false
     
     sessionId := string( sessionIdBytes )
     
@@ -516,6 +521,8 @@ func (self *WDA) StartBroadcastStream( appName string, bid string ) {
     sid := self.create_session( bid )
     self.sessionId = sid
     
+    time.Sleep( time.Second * 4 )
+    
     toSelector := self.ElByName( "Broadcast Selector" )
     self.ElClick( toSelector )
     
@@ -529,6 +536,8 @@ func (self *WDA) StartBroadcastStream( appName string, bid string ) {
 }
 
 func (self *WDA) AppChanged( bundleId string ) {
+    if self.disableUpdate { return }
+    
     json := fmt.Sprintf( `{
         action: "updateApplication"
         bundleId: "%s"
