@@ -42,4 +42,5 @@
     },
     wdaXctestRunFolder: "repos/WebDriverAgent/build/Build/Products"
     port: 8027
+    portRange: "8101-8200"
 }

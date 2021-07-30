@@ -14,7 +14,9 @@ type Event struct {
 type DeviceTracker struct {
     Config     *Config
     DevMap     map [string] *Device
-    localPorts []int
+    freePorts  []int
+    portMin    int
+    portMax    int
     process    map[string] *GenericProc
     lock       *sync.Mutex
     cf         *ControlFloor
@@ -35,9 +37,12 @@ func NewDeviceTracker( config *Config, detect bool ) (*DeviceTracker) {
         DevMap: make( map [string] *Device ),
         //EventCh: make( chan Event ),
         Config: config,
-        localPorts: []int{
-            8102, 8103, 8104, 8105, 8106, 8107, 8108, 8109, 8110, 8111, 8112, 8113, 8114, 8115, 8116,
-        },
+        portMin: 8101,
+        portMax: 8200,
+        freePorts: []int{},
+        //localPorts: []int{
+        //    8102, 8103, 8104, 8105, 8106, 8107, 8108, 8109, 8110, 8111, 8112, 8113, 8114, 8115, 8116,
+        //},
         cf: cf,
         cfStop: cfStop,
     }
@@ -70,9 +75,22 @@ func ( self *DeviceTracker ) stopProc( procName string ) {
 func (self *DeviceTracker) getPort() (int) {
     var port int
     self.lock.Lock()
-    port, self.localPorts = self.localPorts[0], self.localPorts[1:]
+    //port, self.localPorts = self.localPorts[0], self.localPorts[1:]
+    if len( self.freePorts ) > 0 {
+      port = self.freePorts[0]
+      self.freePorts = self.freePorts[1:]
+    } else {
+      port = self.portMin
+      self.portMin++
+    }
     self.lock.Unlock()
     return port
+}
+
+func (self *DeviceTracker) freePort( port int ) {
+    self.lock.Lock()
+    self.freePorts = append( self.freePorts, port )
+    self.lock.Unlock()
 }
 
 func (self *DeviceTracker) getDevice( udid string ) (*Device) {
@@ -144,6 +162,8 @@ func (self *DeviceTracker) onDeviceDisconnect1( bdev BridgeDev ) {
     self.onDeviceDisconnect( dev )
     dev.stopEventLoop()
     dev.endProcs()
+    
+    dev.releasePorts()
 }
 
 func (self *DeviceTracker) shutdown() {

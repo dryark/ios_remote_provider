@@ -15,7 +15,7 @@ import (
     "os/exec"
     "strings"
     "strconv"
-    //"time"
+    "time"
     //"go.nanomsg.org/mangos/v3"
     //nanoReq  "go.nanomsg.org/mangos/v3/protocol/req"
 )
@@ -34,6 +34,7 @@ type IIFDev struct {
   udid        string
   name        string
   procTracker ProcTracker
+  config      *CDevice
 }
 
 // IosIF bridge
@@ -92,6 +93,12 @@ func (self *IIFBridge) list() []BridgeDevInfo {
 func (self *IIFBridge) OnConnect( udid string, name string, plog *log.Entry ) {
   dev := NewIIFDev( self, udid, name )
   self.devs[ udid ] = dev
+  
+  devConfig, hasDevConfig := self.config.devs[ udid ]
+  if hasDevConfig {
+    dev.config = &devConfig
+  }
+  
   dev.procTracker = self.onConnect( dev )
 }
 
@@ -124,6 +131,106 @@ func (self *IIFDev) setProcTracker( procTracker ProcTracker ) {
   self.procTracker = procTracker
 }
 
+//func (self *IIFDev) tunnel( pairs []TunPair, onready func() ) {
+//  self.tunnelIosif( pairs, onready )
+//}
+
+func (self *IIFDev) tunnelIproxy( pairs []TunPair, onready func() ) {
+  tunName := "tunnel"
+  specs := []string{}
+  for _,pair := range pairs {
+    tunName = fmt.Sprintf( "%s_%d->%d", tunName, pair.from, pair.to )
+    specs = append( specs, fmt.Sprintf("%d:%d",pair.from,pair.to) )
+  }
+  
+  args := []string {
+    "-u", self.udid,
+  }
+  args = append( args, specs... )
+  fmt.Printf("Starting %s with %s\n", "/usr/local/bin/iproxy", args )
+  
+  o := ProcOptions{
+    procName: tunName,
+    binary: "/usr/local/bin/iproxy",
+    args: args,
+    stdoutHandler: func( line string, plog *log.Entry ) {
+      fmt.Printf( "tunnel:%s\n", line )
+      if strings.Contains( line, "waiting" ) {
+        if onready != nil {
+          //onready()
+        }
+      }
+    },
+    stderrHandler: func( line string, plog *log.Entry ) {
+      fmt.Printf( "tunnel err:%s\n", line )
+      
+    },
+    onStop: func( interface{} ) {
+      log.Printf("%s stopped\n", tunName)
+    },
+  }
+  proc_generic( self.procTracker, nil, &o )
+  time.Sleep( time.Second * 2 )
+  onready()
+}
+
+func (self *IIFDev) tunnelGoIos( pairs []TunPair, onready func() ) {
+  count := len( pairs )
+  sofar := 0
+  done := make( chan bool )
+  for _,pair := range( pairs ) {
+    self.tunnelOne( pair, func() {
+      sofar++
+      if sofar == count {
+        done <- true
+      }
+    } )
+  }
+  <- done
+  onready()
+}
+
+func (self *IIFDev) tunnelOne( pair TunPair, onready func() ) {
+  tunName := "tunnel"
+  specs := []string{}
+  
+  tunName = fmt.Sprintf( "%s_%d->%d", tunName, pair.from, pair.to )
+  specs = append( specs, fmt.Sprintf("%d",pair.from) )
+  specs = append( specs, fmt.Sprintf("%d",pair.to) )
+  
+  args := []string {
+    "forward",
+    "--udid", self.udid,
+  }
+  args = append( args, specs... )
+  fmt.Printf("Starting %s with %s\n", self.bridge.cli, args )
+  
+  o := ProcOptions{
+    procName: tunName,
+    binary: "bin/go-ios",
+    args: args,
+    stdoutHandler: func( line string, plog *log.Entry ) {
+      fmt.Println( "tunnel:%s", line )
+    },
+    stderrHandler: func( line string, plog *log.Entry ) {
+      
+      //fmt.Println( "tunnel:%s", line )
+      if strings.Contains( line, "Start" ) {
+        if onready != nil {
+          onready()
+        }
+        fmt.Printf( "tunnel start:%s\n", line )
+      } else {
+        fmt.Printf( "tunnel err:%s\n", line )
+      }
+    },
+    onStop: func( interface{} ) {
+      log.Printf("%s stopped\n", tunName)
+    },
+  }
+  proc_generic( self.procTracker, nil, &o )
+}
+
 func (self *IIFDev) tunnel( pairs []TunPair, onready func() ) {
   tunName := "tunnel"
   specs := []string{}
@@ -144,7 +251,7 @@ func (self *IIFDev) tunnel( pairs []TunPair, onready func() ) {
     binary: self.bridge.cli,
     args: args,
     stdoutHandler: func( line string, plog *log.Entry ) {
-      //fmt.Println( "tunnel:%s", line )
+      fmt.Printf( "tunnel:%s\n", line )
       if strings.Contains( line, "Ready" ) {
         if onready != nil {
           onready()
@@ -312,6 +419,7 @@ func (self *IIFDev) NewSyslogMonitor( handleLogItem func( uj.JNode ) ) {
             "log",
             "-id", self.udid,
             "proc", "SpringBoard(SpringBoard)",
+            "proc", "SpringBoard(FrontBoard)",
             "proc", "dasd",
         },
         startFields: log.Fields{
@@ -431,6 +539,8 @@ func (self *IIFDev) wda( port int, onStart func(), onStop func(interface{}), mjp
         self.wdaGoIos( port, onStart, onStop, mjpegPort )
     } else if method == "tidevice" {
         self.wdaTidevice( port, onStart, onStop, mjpegPort )
+    } else if method == "manual" {
+        //self.wdaTidevice( port, onStart, onStop, mjpegPort )
     } else {
         fmt.Printf("Unknown wda start method %s\n", method )
         os.Exit(1)
@@ -459,13 +569,20 @@ func (self *IIFDev) wdaGoIos( port int, onStart func(), onStop func(interface{})
     }
     
     fmt.Fprintf( f, "Starting WDA via %s with args %s\n", "bin/go-ios", strings.Join( args, " " ) )
+    fmt.Printf( "Starting WDA via %s with args %s\n", "bin/go-ios", strings.Join( args, " " ) )
     
     o := ProcOptions {
         procName: "wda",
         binary: "bin/go-ios",
         args: args,
         stdoutHandler: func( line string, plog *log.Entry ) {
-            if strings.Contains(line, "Test Case '-[UITestingUITests testRunner]' started") {
+            if strings.Contains( line, "configuration is unsupported" ) {
+                plog.Println( line )
+            }
+            fmt.Fprintln( f, line )
+        },
+        stderrHandler: func( line string, plog *log.Entry ) {
+            if strings.Contains(line, "ServerURLHere") {
                 plog.WithFields( log.Fields{
                     "type": "wda_start",
                     "uuid": censorUuid(self.udid),
@@ -477,12 +594,6 @@ func (self *IIFDev) wdaGoIos( port int, onStart func(), onStop func(interface{})
                 plog.Println( line )
             }
             fmt.Fprintln( f, line )
-        },
-        stderrHandler: func( line string, plog *log.Entry ) {
-            if strings.Contains( line, "configuration is unsupported" ) {
-                plog.Println( line )
-                fmt.Fprintln( f, line )
-            }
         },
         onStop: func( wrapper interface{} ) {
             onStop( wrapper )

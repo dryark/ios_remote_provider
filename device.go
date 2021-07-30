@@ -39,6 +39,8 @@ type Device struct {
     name            string
     lock            *sync.Mutex
     wdaPort         int
+    wdaPortFixed    bool
+    wdaNngPort      int
     vidPort         int
     vidControlPort  int
     backupVideoPort int
@@ -72,7 +74,9 @@ type Device struct {
 func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev BridgeDev ) (*Device) {
     dev := Device{
         devTracker:      devTracker,
-        wdaPort:         devTracker.getPort(),
+        //wdaPort:         devTracker.getPort(),
+        wdaPortFixed:    false,
+        wdaNngPort:      devTracker.getPort(),
         vidPort:         devTracker.getPort(),
         vidMode:         VID_NONE,
         vidControlPort:  devTracker.getPort(),
@@ -91,8 +95,28 @@ func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev Bri
     }
     if devConfig, ok := config.devs[udid]; ok {
         dev.devConfig = &devConfig
+        if devConfig.wdaPort != 0 {
+            dev.wdaPort = devConfig.wdaPort
+            dev.wdaPortFixed = true
+        } else {
+            dev.wdaPort = devTracker.getPort()
+        }
+    } else {
+        dev.wdaPort = devTracker.getPort()
     }
     return &dev
+}
+
+func ( self *Device ) releasePorts() {
+    dt := self.devTracker
+    if !self.wdaPortFixed {
+        dt.freePort( self.wdaPort )
+    }
+    dt.freePort( self.wdaNngPort )
+    dt.freePort( self.vidPort )
+    dt.freePort( self.vidControlPort )
+    dt.freePort( self.backupVideoPort )
+    dt.freePort( self.mjpegVideoPort )
 }
 
 func ( self *Device ) startProc( proc *GenericProc ) {
@@ -115,6 +139,7 @@ type DevEvent struct {
     action int
     width  int
     height int
+    data string
 }
 
 func (self *Device) shutdown() {
@@ -159,7 +184,7 @@ func (self *Device) startEventLoop() {
                 } else if action == DEV_ALERT_GONE {
                     self.disableBackupVideo()
                 } else if action == DEV_APP_CHANGED {
-                    self.devAppChanged() 
+                    self.devAppChanged( event.data ) 
                 }
             }
         }
@@ -250,17 +275,20 @@ func (self *Device) startBackupVideo() {
     )
 }
 
-func (self *Device) devAppChanged() {
+func (self *Device) devAppChanged( bundleId string ) {
     if self.wda == nil {
         return
     }
     
-    self.wda.AppChanged()
+    self.wda.AppChanged( bundleId )
 }
 
 func (self *Device) startProcs() {
     // start wda
     self.wda = NewWDA( self.config, self.devTracker, self )
+    if self.config.wdaMethod == "manual" {
+        //self.wda.startWdaNng()
+    }
     
     self.startBackupFrameProvider() // just the timed loop
     self.backupVideo = self.bridge.NewBackupVideo( 
@@ -284,10 +312,22 @@ func (self *Device) startProcs() {
                 fmt.Printf("Alert went away\n")
                 self.EventCh <- DevEvent{ action: DEV_ALERT_GONE }
             }
+        } else if app == "SpringBoard(FrontBoard)" {
+            if strings.Contains( msg, "Setting process visibility to: Foreground" ) {
+                fmt.Printf("Process vis line:%s\n", msg )
+                appStr := "application<"
+                index := strings.Index( msg, appStr )
+                after := index + len( appStr )
+                left := msg[after:]
+                endPos := strings.Index( left, ">" )
+                app := left[:endPos]
+                fmt.Printf("app:%s\n", app )
+                self.EventCh <- DevEvent{ action: DEV_APP_CHANGED, data: app }
+            }
         } else if app == "dasd" {
             if strings.HasPrefix( msg, "Foreground apps changed" ) {
-                fmt.Printf("App changed\n")
-                self.EventCh <- DevEvent{ action: DEV_APP_CHANGED }
+                //fmt.Printf("App changed\n")
+                //self.EventCh <- DevEvent{ action: DEV_APP_CHANGED }
             }
         }
     } )

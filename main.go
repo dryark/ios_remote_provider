@@ -42,6 +42,7 @@ func main() {
         uc.OPT("-id","Udid of device",0),
     }
     uclop.AddCmd( "winsize", "Get device window size", runWindowSize, windowSizeOpts )
+    uclop.AddCmd( "source", "Get device xml source", runSource, windowSizeOpts )
     
     vidTestOpts := uc.OPTS{
         uc.OPT("-id","Udid of device",0),
@@ -162,16 +163,13 @@ func runClick( cmd *uc.Cmd ) {
     <- startChan
     
     wda.ensureSession()
-    wda.OpenControlCenter("bottomUp")
-    recBtn := wda.ElByName( "Screen Recording" )
-    fmt.Printf("recBtn:%s\n", recBtn )
-    wda.ElForceTouch( recBtn, 2000 )
+    // todo
     
     dotLoop( cmd, tracker )
 }
 
 func runWindowSize( cmd *uc.Cmd ) {
-    //config := NewConfig( "config.json", "default.json", "calculated.json" )
+    config := NewConfig( "config.json", "default.json", "calculated.json" )
   
     runCleanup( cmd )
     
@@ -183,14 +181,50 @@ func runWindowSize( cmd *uc.Cmd ) {
     
     wda,_ := wdaForDev( id )
     startChan := make( chan bool )
-    wda.startChan = startChan
-    wda.start()
+    if config.wdaMethod == "manual" {
+      wda.startWdaNng( func() { startChan <- true } )
+    } else {
+      wda.startChan = startChan
+      wda.start()
+    }
     <- startChan
-    //fmt.Printf("WDA supposedly started")
+    fmt.Printf("WDA supposedly started")
     
     wda.ensureSession()
+    //wda.create_session("")
     wid, heg := wda.WindowSize()
     fmt.Printf("Width: %d, Height: %d\n", wid, heg )
+    wda.stop()
+    
+    runCleanup( cmd )
+}
+
+func runSource( cmd *uc.Cmd ) {
+    config := NewConfig( "config.json", "default.json", "calculated.json" )
+  
+    runCleanup( cmd )
+    
+    id := ""
+    idNode := cmd.Get("-id")
+    if idNode != nil {
+        id = idNode.String()
+    }
+    
+    wda,_ := wdaForDev( id )
+    startChan := make( chan bool )
+    if config.wdaMethod == "manual" {
+      wda.startWdaNng( func() { startChan <- true } )
+    } else {
+      wda.startChan = startChan
+      wda.start()
+    }
+    <- startChan
+    fmt.Printf("WDA supposedly started")
+    
+    //wda.ensureSession()
+    wda.create_session("")
+    xml := wda.Source()
+    fmt.Println( xml )
     wda.stop()
     
     runCleanup( cmd )

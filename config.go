@@ -14,6 +14,7 @@ type CDevice struct {
     udid string
     uiWidth int
     uiHeight int
+    wdaPort int
     //controlCenterMethod string
 }
 
@@ -35,6 +36,7 @@ type Config struct {
     vidAppBid    string
     vidAppBidPrefix string
     vidAppExtBid string
+    portRange    string
 }
 
 func GetStr( root uj.JNode, path string ) string {
@@ -82,6 +84,7 @@ func NewConfig( configPath string, defaultsPath string, calculatedPath string ) 
     config.vidAppBid       = GetStr( root, "vidapp.bundleId" )
     config.vidAppExtBid    = GetStr( root, "vidapp.extBundleId" )
     config.vidAppBidPrefix = GetStr( root, "vidapp.bundleIdPrefix" )
+    config.portRange = GetStr( root, "portRange" )
     
     tideviceNode := root.Get( "tidevice" )
     if tideviceNode != nil {
@@ -113,6 +116,7 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
             udid := devNode.Get("udid").String()
             uiWidth := 0
             uiHeight := 0
+            wdaPort := 0
             //controlCenterMethod := "bottomUp"
             widthNode := devNode.Get("uiWidth")
             if widthNode != nil {
@@ -121,6 +125,10 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
             heightNode := devNode.Get("uiHeight")
             if heightNode != nil {
               uiHeight = heightNode.Int()
+            }
+            wdaPortNode := devNode.Get("wdaPort")
+            if wdaPortNode != nil {
+              wdaPort = wdaPortNode.Int()
             }
             //methodNode := devNode.Get("controlCenterMethod")
             //if methodNode != nil {
@@ -131,6 +139,7 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
                 udid: udid,
                 uiWidth: uiWidth,
                 uiHeight: uiHeight,
+                wdaPort: wdaPort,
                 //controlCenterMethod: controlCenterMethod,
             }
             devs[ udid ] = dev
