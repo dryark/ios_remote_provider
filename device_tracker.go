@@ -131,6 +131,8 @@ func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
     if devConfOk {
       devConfOb := self.Config.devs[udid]
       devConf = &devConfOb
+    } else {
+      fmt.Printf("Device not found in config.devices\n")
     }
     
     mgInfo := make( map[string]uj.JNode )

@@ -192,13 +192,13 @@ func (self *WDA) start() {
                 if self.startChan != nil {
                     self.startChan <- true
                 }
-                self.dev.EventCh <- DevEvent{ action: DEV_WDA_START }
                 
                 fmt.Printf("Starting NNG\n")
                 nngSocket, _, _ := self.dialWdaNng()
                 self.nngSocket = nngSocket
                 fmt.Printf("NNG Started\n")
                 
+                self.dev.EventCh <- DevEvent{ action: DEV_WDA_START }
             },
             func(interface{}) { // onStop
                 self.dev.EventCh <- DevEvent{ action: DEV_WDA_STOP }
