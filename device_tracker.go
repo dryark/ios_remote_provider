@@ -138,6 +138,8 @@ func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
         devConf := self.Config.devs[ udid ]
         clickWidth = devConf.uiWidth
         clickHeight = devConf.uiHeight
+        width = clickWidth
+        height = clickHeight
     } else {
         mgInfo = bdev.gestaltnode( []string{
             "AvailableDisplayZoomSizes",
