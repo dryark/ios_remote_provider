@@ -4,6 +4,7 @@ import (
     "fmt"
     "sync"
     log "github.com/sirupsen/logrus"
+    uj "github.com/nanoscopic/ujsonin/v2/mod"
 )
 
 type Event struct {
@@ -120,28 +121,33 @@ func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
     
     _, devConfOk := self.Config.devs[udid]
         
-    mgInfo := bdev.gestaltnode( []string{
-        "AvailableDisplayZoomSizes",
-        "main-screen-width",
-        "main-screen-height",
-        "ArtworkTraits",
-    } )
-    width := mgInfo["main-screen-width"].Int()
-    height := mgInfo["main-screen-height"].Int()
+    clickWidth := 0
+    clickHeight := 0
+    width := 0
+    height := 0
     
-    var clickWidth int
-    var clickHeight int
     
     var devConf *CDevice
     if devConfOk {
       devConfOb := self.Config.devs[udid]
       devConf = &devConfOb
     }
+    
+    mgInfo := make( map[string]uj.JNode )
     if devConfOk && devConf.uiWidth != 0 {
         devConf := self.Config.devs[ udid ]
         clickWidth = devConf.uiWidth
         clickHeight = devConf.uiHeight
     } else {
+        mgInfo = bdev.gestaltnode( []string{
+            "AvailableDisplayZoomSizes",
+            "main-screen-width",
+            "main-screen-height",
+            "ArtworkTraits",
+        } )
+        width = mgInfo["main-screen-width"].Int()
+        height = mgInfo["main-screen-height"].Int()
+    
         sizeArr := mgInfo["AvailableDisplayZoomSizes"].Get("default") // zoomed also available
         clickWidth = sizeArr.GetAt(1).Int()
         clickHeight = sizeArr.GetAt(3).Int()
