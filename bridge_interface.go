@@ -44,7 +44,7 @@ type BridgeDev interface {
   gestaltnode( names []string ) map[string]uj.JNode
   ps() []iProc
   screenshot() Screenshot
-  wda( port int, onStart func(), onStop func(interface{}), mjpegPort int )
+  wda( onStart func(), onStop func(interface{}) )
   destroy()
   setProcTracker( procTracker ProcTracker )
   NewBackupVideo( port int, onStop func( interface{} ) ) ( *BackupVideo )

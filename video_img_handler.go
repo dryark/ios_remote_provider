@@ -10,6 +10,7 @@ import (
     _ "go.nanomsg.org/mangos/v3/transport/all"
     
     uj "github.com/nanoscopic/ujsonin/v2/mod"
+    log "github.com/sirupsen/logrus"
 )
 
 type ImgHandler struct {
@@ -85,6 +86,12 @@ func ( self *ImgHandler ) processImgMsg() (int) {
     text := ""
     data := []byte{}
     // image is prepended by some JSON metadata
+    
+    if len(msg.Body) == 0 {
+        fmt.Printf("nil message from video app\n")
+        return 0
+    }
+        
     if msg.Body[0] == '{' {
         endi := strings.Index( string(msg.Body), "}" )
         root, left := uj.Parse( msg.Body )
@@ -110,7 +117,11 @@ func ( self *ImgHandler ) processImgMsg() (int) {
         
         //fmt.Printf("ow=%d, oh=%d, dw=%d, dh=%d\n", ow, oh, dw, dh )
         
-        text = fmt.Sprintf("Width: %d, Height: %d, Size: %d\n", dw, dh, len( msg.Body ) )
+        cause := root.Get("c").Int()
+        crc := root.Get("crc").String()
+        
+        text = fmt.Sprintf("{\"Width\": %d, \"Height\": %d, \"Size\": %d, \"Cause\": %d, \"Crc\": \"%s\"}",
+          dw, dh, len( msg.Body ), cause, crc )
         
         if !self.isUp {
             self.isUp = true
@@ -118,8 +129,8 @@ func ( self *ImgHandler ) processImgMsg() (int) {
         }
         
         if !self.sentSize {
-            json := fmt.Sprintf( `{"type":"frame1","width":%d,"height":%d,"uuid":"%s"}`, dw, dh, self.udid ) 
-            fmt.Printf("FIRSTFRAME%s\n",json)
+            //json := fmt.Sprintf( `{"type":"frame1","width":%d,"height":%d,"uuid":"%s"}`, dw, dh, self.udid ) 
+            //fmt.Printf("FIRSTFRAME%s\n",json)
             self.sentSize = true
         }
     } else {
@@ -145,7 +156,10 @@ func ( self *ImgHandler ) mainLoop( vidStopChan chan bool, controlStopChan chan 
     self.enableStream()
     var res int
     
-    fmt.Printf("Main loop start\n")
+    log.WithFields( log.Fields{
+        "type": "video_handler_start",
+        "udid": censorUuid( self.udid ),
+    } ).Info("Video handler start")
     for {
         select {
             case <- controlStopChan:
@@ -159,7 +173,7 @@ func ( self *ImgHandler ) mainLoop( vidStopChan chan bool, controlStopChan chan 
                 res = 2
                 goto DONE
             case <- self.stopChan:
-                fmt.Printf("Server channel got stop message\n")
+                //fmt.Printf("Server channel got stop message\n")
                 res = 1
                 goto DONE
             case msg := <- self.mainCh:
@@ -186,7 +200,10 @@ func ( self *ImgHandler ) mainLoop( vidStopChan chan bool, controlStopChan chan 
     }
     
     DONE:
-    fmt.Printf("Main loop stop\n")
+    log.WithFields( log.Fields{
+        "type": "video_handler_stop",
+        "udid": censorUuid( self.udid ),
+    } ).Info("Video handler stop")
     self.disableStream()
     return res
 }

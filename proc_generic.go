@@ -28,6 +28,7 @@ type ProcOptions struct {
 type ProcTracker interface {
     startProc( proc *GenericProc )
     stopProc( procName string )
+    isShuttingDown() bool
 }
 
 type GPMsg struct {
@@ -85,7 +86,7 @@ func proc_generic( procTracker ProcTracker, wrapper interface{}, opt *ProcOption
     
     _, ferr := os.Stat( opt.binary )
     if ferr != nil {
-        log.WithFields( log.Fields{
+        plog.WithFields( log.Fields{
             "type":  "proc_bin_missing",
             "error": ferr,
             "path":  opt.binary,
@@ -101,10 +102,15 @@ func proc_generic( procTracker ProcTracker, wrapper interface{}, opt *ProcOption
             if v == nil {
                 fmt.Printf("%s not set\n", k )
             }
-            fmt.Printf("%s = %s\n", k, v )
+            //fmt.Printf("%s = %s\n", k, v )
             startFields[k] = v
         }
     }
+    
+    plog.WithFields( log.Fields{
+        "type":  "proc_fields",
+        "fields": startFields,
+    } ).Debug("Process starting fields")
     
     go func() { for {
         plog.WithFields( startFields ).Info("Process start - " + opt.procName)
@@ -193,7 +199,9 @@ func proc_generic( procTracker ProcTracker, wrapper interface{}, opt *ProcOption
                     if opt.stderrHandler != nil {
                         opt.stderrHandler( line, plog )
                     } else {
-                        plog.WithFields( log.Fields{ "line": line, "iserr": true } ).Info("")
+                        if line != "" {
+                            plog.WithFields( log.Fields{ "line": line, "iserr": true } ).Info("")
+                        }
                     }
             }
             if runDone { break }
@@ -221,6 +229,8 @@ func proc_generic( procTracker ProcTracker, wrapper interface{}, opt *ProcOption
         } else {
             plog.Debug("No wait requested")
         }
+        
+        if procTracker.isShuttingDown() { break }
     } }()
     
     return &proc

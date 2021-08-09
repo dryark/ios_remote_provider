@@ -41,6 +41,7 @@ type VideoStreamer interface {
     mainLoop()
     getControlChan() ( chan int )
     setImageConsumer( imgConsumer *ImageConsumer )
+    forceOneFrame()
 }
 
 type AppStream struct {
@@ -72,6 +73,12 @@ func (self *AppStream) setImageConsumer( imgConsumer *ImageConsumer ) {
     }
 }
 
+func (self *AppStream) forceOneFrame() {
+    if self.controlSocket != nil {
+        self.controlSocket.Send([]byte(`{"action": "oneframe"}`))
+    }
+}
+
 func (self *AppStream) getControlChan() ( chan int ) {
     return self.imgHandler.mainCh
 }
@@ -87,10 +94,7 @@ func (self *AppStream) openControl() (mangos.Socket,bool,chan bool) {
         }
         var res int
         controlSocket, res, controlStopChan = self.dialAppControl()
-        if res == 0 {
-            fmt.Printf("Connected to control port\n")
-            break
-        }
+        if res == 0 { break }
         time.Sleep( time.Second * 10 )
         failures = failures + 1
         if failures >= 1 {
@@ -98,13 +102,17 @@ func (self *AppStream) openControl() (mangos.Socket,bool,chan bool) {
             return nil,true,nil
         }
     }
+    log.WithFields( log.Fields{
+        "type": "vidapp_control_connect",
+        "udid": censorUuid( self.udid ),
+    } ).Info("Vidapp - Control Connected")
     return controlSocket,false,controlStopChan
 }
 
 func (self *AppStream) openVideo() (mangos.Socket,bool,chan bool) {
     var imgSocket mangos.Socket
     var vidStopChan chan bool
-    fmt.Printf("Attempting to connect to video\n")
+    //fmt.Printf("Attempting to connect to video\n")
     failures := 0
     for {
         select {
@@ -121,7 +129,10 @@ func (self *AppStream) openVideo() (mangos.Socket,bool,chan bool) {
             return nil,true,nil
         }
     }
-    fmt.Printf("Connected to video port\n")
+    log.WithFields( log.Fields{
+        "type": "vidapp_control_connect",
+        "udid": censorUuid( self.udid ),
+    } ).Info("Vidapp - Video Connected")
     return imgSocket,false,vidStopChan
 }
 
@@ -200,7 +211,7 @@ func ( self *AppStream) dialAppVideo() ( mangos.Socket, int, chan bool ) {
     vidStopChan := make( chan bool )
     
     pullSock.SetPipeEventHook( func( action mangos.PipeEvent, pipe mangos.Pipe ) {
-        fmt.Printf("Pipe action %d\n", action )
+        //fmt.Printf("Pipe action %d\n", action )
         if action == 2 { vidStopChan <- true }
     } )
     
@@ -222,8 +233,8 @@ func (self *AppStream) dialAppControl() ( mangos.Socket, int, chan bool ) {
         return nil, 1, nil
     }
     
-    sec1, _ := time.ParseDuration( "1s" )
-    reqSock.SetOption( mangos.OptionRecvDeadline, sec1 )
+    /*sec1, _ := time.ParseDuration( "1s" )
+    reqSock.SetOption( mangos.OptionRecvDeadline, sec1 )*/
     if err = reqSock.Dial( controlSpec ); err != nil {
         log.WithFields( log.Fields{
             "type": "err_socket_dial",
@@ -236,7 +247,7 @@ func (self *AppStream) dialAppControl() ( mangos.Socket, int, chan bool ) {
     controlStopChan := make( chan bool )
     
     reqSock.SetPipeEventHook( func( action mangos.PipeEvent, pipe mangos.Pipe ) {
-        fmt.Printf("Pipe action %d\n", action )
+        //fmt.Printf("Pipe action %d\n", action )
         if action == 2 { controlStopChan <- true }
     } )
     

@@ -24,6 +24,7 @@ type DeviceTracker struct {
     cfStop     chan bool
     bridge     BridgeRoot
     pendingDevs [] BridgeDev
+    shuttingDown bool
 }
 
 func NewDeviceTracker( config *Config, detect bool ) (*DeviceTracker) {
@@ -59,6 +60,10 @@ func NewDeviceTracker( config *Config, detect bool ) (*DeviceTracker) {
         cf.DevTracker = self
     }
     return self
+}
+
+func ( self *DeviceTracker ) isShuttingDown() bool {
+    return self.shuttingDown;
 }
 
 func (self *DeviceTracker) startProc( proc *GenericProc ) {
@@ -116,7 +121,7 @@ func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
         return nil
     }
     
-    fmt.Printf("udid: %s\n", udid)
+    //fmt.Printf("udid: %s\n", udid)
     //dev := self.DevMap[ udid ]
     
     _, devConfOk := self.Config.devs[udid]
@@ -171,22 +176,16 @@ func (self *DeviceTracker) onDeviceDisconnect1( bdev BridgeDev ) {
     
     self.onDeviceDisconnect( dev )
     dev.stopEventLoop()
-    dev.endProcs()
+    dev.shutdown()
     
     dev.releasePorts()
 }
 
 func (self *DeviceTracker) shutdown() {
-    for _,proc := range self.process {
-        log.WithFields( log.Fields{
-            "type": "shutdown_proc",
-            "proc": proc.name,
-            "pid":  proc.pid,
-        } ).Info("Shutdown proc")
-        go func() { proc.Kill() }()
-    }
+    self.shuttingDown = true
     
     for _,dev := range self.DevMap {
+        dev.shuttingDown = true
         self.cf.notifyProvisionStopped( dev.udid )
     }
     
@@ -198,10 +197,24 @@ func (self *DeviceTracker) shutdown() {
         dev.shutdown()
     }
     
+    for _,proc := range self.process {
+        log.WithFields( log.Fields{
+            "type": "shutdown_proc",
+            "proc": proc.name,
+            "pid":  proc.pid,
+        } ).Info("Shutting down " + proc.name + " devproc")
+        go func() { proc.Kill() }()
+    }
+    
     go func() { self.cfStop <- true }()
 }
 
 func (self *DeviceTracker) onDeviceConnect( uuid string, bdev BridgeDev ) (*Device){
+    log.WithFields( log.Fields{
+        "type": "dev_present",
+        "uuid": censorUuid( uuid ),
+    } ).Info("Device Present")
+    
     dev := self.DevMap[ uuid ]
     if dev != nil {
         dev.connected = true
@@ -211,9 +224,16 @@ func (self *DeviceTracker) onDeviceConnect( uuid string, bdev BridgeDev ) (*Devi
     
     devInfo := getAllDeviceInfo( bdev )
     log.WithFields( log.Fields{
-        "type":       "devInfo",
-        "uuid":       censorUuid( uuid ),
+        "type": "dev_info_full",
+        "uuid": censorUuid( uuid ),
         "info": devInfo,
+    } ).Debug("Device Info")
+    log.WithFields( log.Fields{
+        "type": "dev_info_basic",
+        "uuid": censorUuid( uuid ),
+        "ModelNumber": devInfo["ModelNumber"],
+        "ProductType": devInfo["ProductType"],
+        "ProductVersion": devInfo["ProductVersion"],
     } ).Info("Device Info")
     
     dev.info = devInfo

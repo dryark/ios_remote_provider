@@ -98,7 +98,9 @@ func NewControlFloor( config *Config ) (*ControlFloor, chan bool) {
             
             success := self.login()
             if success {
-                fmt.Println("Logged in to control floor")
+                log.WithFields( log.Fields{
+                    "type": "cf_login_success",
+                } ).Info( "Logged in to control floor" )
             } else {
                 fmt.Println("Could not login to control floor")
                 fmt.Println("Waiting 10 seconds to retry...")
@@ -188,12 +190,18 @@ func ( self *ControlFloor ) openWebsocket() {
     }
     
     if self.selfSigned {
-        fmt.Printf("self signed option\n")
+        log.WithFields( log.Fields{
+            "type": "cf_ws_selfsign",
+        } ).Warn( "ControlFloor connection is self signed" )
         dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
         //ws.DefaultDialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
     }
     
-    fmt.Printf("link for dialer = %s\n", self.wsBase + "/provider/ws" )
+    log.WithFields( log.Fields{
+        "type": "cf_ws_connect",
+        "link": ( self.wsBase + "/provider/ws" ),
+    } ).Info( "Connecting ControlFloor WebSocket" )
+    
     conn, _, err := dialer.Dial( self.wsBase + "/provider/ws", nil )
     if err != nil {
         panic( err )
@@ -323,7 +331,7 @@ func loadCFConfig( configPath string ) (uj.JNode) {
             "error":       serr,
             "config_path": configPath,
         } ).Fatal(
-          "Could not read ControlFloor auth token. Have you run `./main register`?",
+            "Could not read ControlFloor auth token. Have you run `./main register`?",
         )
     }
     configFile := configPath
@@ -367,7 +375,11 @@ func (self *ControlFloor) baseNotify( name string, udid string, vals url.Values 
     if resp.StatusCode != 200 {
         fmt.Printf("Got status %d from '%s' notify\n", resp.StatusCode, name )
     } else {
-        fmt.Printf("Notified control floor of '%s'; uuid=%s\n", name, censorUuid( udid ) )
+        log.WithFields( log.Fields{
+            "type": "cf_notify",
+            "name": name,
+            "udid": censorUuid( udid ),
+        } ).Info( fmt.Sprintf("Notifying CF of %s", name) )
     }
 }
 
@@ -462,22 +474,22 @@ func (self *ControlFloor) login() (bool) {
     if err != nil {
         var urlError *url.Error
         if errors.As( err, &urlError ) {
-          var netOpError *net.OpError 
-          if errors.As( urlError, &netOpError ) {
-            rootErr := netOpError.Err
-            if( rootErr.Error() == "connect: connection refused" ) {
-              fmt.Printf("Could not connect to ControlFarm; is it running?\n")
+            var netOpError *net.OpError 
+            if errors.As( urlError, &netOpError ) {
+                rootErr := netOpError.Err
+                if( rootErr.Error() == "connect: connection refused" ) {
+                    fmt.Printf("Could not connect to ControlFarm; is it running?\n")
+                } else {
+                    fmt.Printf("Err type:%s - %s\n", reflect.TypeOf(err), err )
+                    fmt.Printf("urlError type:%s - %s\n", reflect.TypeOf(urlError), urlError );
+                    fmt.Printf("netOpError type:%s - %s\n", reflect.TypeOf(netOpError), netOpError )
+                }
             } else {
-              fmt.Printf("Err type:%s - %s\n", reflect.TypeOf(err), err )
-              fmt.Printf("urlError type:%s - %s\n", reflect.TypeOf(urlError), urlError );
-              fmt.Printf("netOpError type:%s - %s\n", reflect.TypeOf(netOpError), netOpError )
+                fmt.Printf("Err type:%s - %s\n", reflect.TypeOf(err), err )
+                fmt.Printf("urlError type:%s - %s\n", reflect.TypeOf(urlError), urlError );
             }
-          } else {
-            fmt.Printf("Err type:%s - %s\n", reflect.TypeOf(err), err )
-            fmt.Printf("urlError type:%s - %s\n", reflect.TypeOf(urlError), urlError );
-          }
         } else {
-          fmt.Printf("Err type:%s - %s\n", reflect.TypeOf(err), err )
+            fmt.Printf("Err type:%s - %s\n", reflect.TypeOf(err), err )
         }
         self.lock.Unlock()
         return false
@@ -490,9 +502,13 @@ func (self *ControlFloor) login() (bool) {
         fmt.Printf("StatusCode from controlfloor login:'%d'\n", resp.StatusCode )
     } else {
         loc, _ := resp.Location()
-        fmt.Printf("Location from redirect of controlfloor login:'%s'\n", loc )
+        
         q := loc.RawQuery
-        if q != "fail=1" { success = true }
+        if q != "fail=1" {
+            success = true
+        } else {
+            fmt.Printf("Location from redirect of controlfloor login:'%s'\n", loc )
+        }
     }
     
     if !success {
@@ -540,7 +556,7 @@ func doregister( config *Config ) (string) {
         panic( readErr )
     }
     
-    fmt.Println( string(body) )
+    //fmt.Println( string(body) )
     root, _ := uj.Parse( body )
     
     sNode := root.Get("Success")

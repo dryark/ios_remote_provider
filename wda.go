@@ -14,16 +14,13 @@ import (
 
 type WDA struct {
     udid          string
-    onDevicePort  int
-    localhostPort int
-    mjpegPort     int
     devTracker    *DeviceTracker
     dev           *Device
     wdaProc       *GenericProc
     config        *Config
     base          string
     sessionId     string
-    startChan     chan bool
+    startChan     chan int
     js2hid        map[int]int
     transport     *http.Transport
     client        *http.Client
@@ -37,7 +34,13 @@ func NewWDA( config *Config, devTracker *DeviceTracker, dev *Device ) (*WDA) {
     if config.wdaMethod != "manual" {
         self.start()
     } else {
-        self.startWdaNng(nil)
+        self.startWdaNng( func( err int ) {
+            if err != 0 {
+                dev.EventCh <- DevEvent{ action: DEV_WDA_START_ERR }
+            } else {
+                dev.EventCh <- DevEvent{ action: DEV_WDA_START }
+            }
+        } )
     }
     return self
 }
@@ -53,10 +56,7 @@ func NewWDANoStart( config *Config, devTracker *DeviceTracker, dev *Device ) (*W
   
     self := WDA{
         udid:          dev.udid,
-        onDevicePort:  8100,
-        localhostPort: dev.wdaPort,
         nngPort:       dev.wdaNngPort,
-        mjpegPort:     dev.mjpegVideoPort,
         devTracker:    devTracker,
         dev:           dev,
         config:        config,
@@ -145,65 +145,75 @@ func (self *WDA) dialWdaNng() ( mangos.Socket, int, chan bool ) {
     stopChan := make( chan bool )
     
     reqSock.SetPipeEventHook( func( action mangos.PipeEvent, pipe mangos.Pipe ) {
-        fmt.Printf("Pipe action %d\n", action )
-        if action == 2 { stopChan <- true }
+        //fmt.Printf("Pipe action %d\n", action )
+        if action == 2 {
+            stopChan <- true
+        }
     } )
     
     return reqSock, 0, stopChan
 }
 
-func (self *WDA) startWdaNng( onready func() ) {
+func (self *WDA) startWdaNng( onready func( err int ) ) {
     pairs := []TunPair{
-        TunPair{ from: self.localhostPort, to: self.onDevicePort },
-        //TunPair{ from: self.mjpegPort,     to: 8150 },
-        TunPair{ from: self.nngPort,       to: 8101 },
+        TunPair{ from: self.nngPort, to: 8101 },
     }
     
     self.dev.bridge.tunnel( pairs, func() {
-        fmt.Printf("Starting NNG\n")
-        nngSocket, _, _ := self.dialWdaNng()
+        nngSocket, err, _ := self.dialWdaNng()
+        if err != 0 {
+            onready( err )
+            return
+        }
         self.nngSocket = nngSocket
-        fmt.Printf("NNG Started\n")
         self.create_session("")
         if onready != nil {
-            onready()            
+            onready( 0 )            
         }
     } )
 }
 
 func (self *WDA) start() {
     pairs := []TunPair{
-        TunPair{ from: self.localhostPort, to: self.onDevicePort },
-        TunPair{ from: self.mjpegPort,     to: 8150 },
-        TunPair{ from: self.nngPort,       to: 8101 },
+        TunPair{ from: self.nngPort, to: 8101 },
     }
     
     self.dev.bridge.tunnel( pairs, func() {
         self.dev.bridge.wda(
-            self.localhostPort,
             func() { // onStart
                 log.WithFields( log.Fields{
                     "type": "wda_start",
                     "udid":  censorUuid(self.udid),
-                    "port": self.localhostPort,
-                    "mjpegPort": self.mjpegPort,
+                    "nngPort": self.nngPort,
                 } ).Info("[WDA] successfully started")
                 
-                if self.startChan != nil {
-                    self.startChan <- true
+                log.WithFields( log.Fields{
+                    "type": "wda_nng_dialing",
+                    "port": self.nngPort,
+                } ).Debug("WDA - Dialing NNG")
+                
+                nngSocket, err, _ := self.dialWdaNng()
+                if err == 0 {
+                    self.nngSocket = nngSocket
+                    log.WithFields( log.Fields{
+                        "type": "wda_nng_dialed",
+                        "port": self.nngPort,
+                    } ).Debug("WDA - NNG Dialed")
+                } else {
+                    fmt.Printf("Error starting/connecting to WDA.\n")
+                    self.dev.EventCh <- DevEvent{ action: DEV_WDA_START_ERR }
+                    return
                 }
                 
-                fmt.Printf("Starting NNG\n")
-                nngSocket, _, _ := self.dialWdaNng()
-                self.nngSocket = nngSocket
-                fmt.Printf("NNG Started\n")
+                if self.startChan != nil {
+                    self.startChan <- 0
+                }
                 
                 self.dev.EventCh <- DevEvent{ action: DEV_WDA_START }
             },
             func(interface{}) { // onStop
                 self.dev.EventCh <- DevEvent{ action: DEV_WDA_STOP }
             },
-            8150,
         )
     } )
 }
@@ -242,22 +252,29 @@ func ( self *WDA ) get_session() ( string ) {
 func ( self *WDA ) create_session( bundle string ) ( string ) {
     if bundle == "" {
         //bundle = "com.apple.Preferences"
+        log.WithFields( log.Fields{
+            "type": "wda_session_creating",
+            "bi": "NONE",
+        } ).Debug("Creating WDA session")
+    } else {
+        log.WithFields( log.Fields{
+            "type": "wda_session_creating",
+            "bi": bundle,
+        } ).Debug("Creating WDA session")
     }
-    
-    fmt.Printf("Creating session; bi=%s\n", bundle )
     
     self.disableUpdate = true
     
     json := fmt.Sprintf( `{
-      action: "createSession"
-      bundleId: "%s"
+        action: "createSession"
+        bundleId: "%s"
     }`, bundle )
         
     err := self.nngSocket.Send([]byte(json))
     if err != nil {
         fmt.Printf("Send error: %s\n", err )
     }
-    fmt.Printf("Sent; receiving\n" )
+    //fmt.Printf("Sent; receiving\n" )
     
     sessionIdBytes, err := self.nngSocket.Recv()
     if err != nil {
@@ -268,7 +285,10 @@ func ( self *WDA ) create_session( bundle string ) ( string ) {
     
     sessionId := string( sessionIdBytes )
     
-    fmt.Printf("Created session; id=%s\n", sessionId )
+    log.WithFields( log.Fields{
+        "type": "wda_session_created",
+        "id": sessionId,
+    } ).Info("Created WDA session")
     
     return sessionId
 }
@@ -285,29 +305,12 @@ func (self *WDA) clickAt( x int, y int ) {
 }
 
 func (self *WDA) hardPress( x int, y int ) {
-    log.Info( "Hard Press:", x, y )
+    log.Info( "Firm Press:", x, y )
     json := fmt.Sprintf( `{
-        action: "touchPerform"
-        "actions":[
-            {
-              "action": "press",
-              "options": {
-                "x":%d,
-                "y":%d,
-                "pressure":3000
-              }
-            },
-            {
-              "action":"wait",
-              "options": {
-                "ms": 700
-              }
-            },
-            {
-              "action":"release",
-              "options":{}
-            }
-        ]
+        action: "tapFirm"
+        x:%d
+        y:%d
+        pressure:3000
     }`, x, y )
     
     self.nngSocket.Send([]byte(json))
@@ -315,28 +318,12 @@ func (self *WDA) hardPress( x int, y int ) {
 }
 
 func (self *WDA) longPress( x int, y int ) {
-    log.Info( "Long Press:", x, y )
+    log.Info( "Press for time:", x, y, 1.0 )
     json := fmt.Sprintf( `{
-    action: "touchPerform"
-    "actions": [
-      {
-        "action": "press",
-        "options": {
-          "x":%d,
-          "y":%d
-        }
-      },
-      {
-        "action":"wait",
-        "options": {
-          "ms": 500
-        }
-      },
-      {
-        "action":"release",
-        "options":{}
-      }
-    ]
+        action: "tapTime"
+        x:%d
+        y:%d
+        time:1.0
     }`, x, y )
     
     self.nngSocket.Send([]byte(json))
@@ -455,6 +442,7 @@ func ( self *WDA ) swipe( x1 int, y1 int, x2 int, y2 int, delay float64 ) {
 }
 
 func (self *WDA) ElClick( elId string ) {
+    log.Info( "elClick:", elId )
     json := fmt.Sprintf( `{
         action: "elClick"
         id: "%s"
@@ -465,6 +453,7 @@ func (self *WDA) ElClick( elId string ) {
 }
 
 func (self *WDA) ElForceTouch( elId string, pressure int ) {
+    log.Info( "elForceTouch:", elId, pressure )
     json := fmt.Sprintf( `{
         action: "elForceTouch"
         element: "%s"
@@ -477,6 +466,7 @@ func (self *WDA) ElForceTouch( elId string, pressure int ) {
 }
 
 func (self *WDA) ElLongTouch( elId string ) {
+    log.Info( "elTouchAndHold", elId )
     json := fmt.Sprintf( `{
         action: "elTouchAndHold"
         element: "%s"
@@ -488,6 +478,7 @@ func (self *WDA) ElLongTouch( elId string ) {
 }
 
 func (self *WDA) ElByName( elName string ) string {
+    log.Info( "elByName:", elName, self.sessionId )
     json := fmt.Sprintf( `{
         action: "elByName"
         name: "%s"
@@ -497,16 +488,20 @@ func (self *WDA) ElByName( elName string ) string {
     self.nngSocket.Send([]byte(json))
     idBytes, _ := self.nngSocket.Recv()
     
+    log.Info( "elByName-result:", string(idBytes) )
+    
     return string( idBytes )
 }
 
 func (self *WDA) WindowSize() (int,int) {
+    log.Info("windowSize")
     self.nngSocket.Send([]byte(`{ action: "windowSize" }`))
     jsonBytes, _ := self.nngSocket.Recv()
     root, _, _ := uj.ParseFull( jsonBytes )
     width := root.Get("width").Int()
     height := root.Get("height").Int()
     
+    log.Info("windowSize-result:",width,height)
     return width,height
 }
 

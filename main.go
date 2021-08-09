@@ -156,7 +156,7 @@ func runClick( cmd *uc.Cmd ) {
     runCleanup( cmd )
     
     wda,tracker := wdaForDev("")
-    startChan := make( chan bool )
+    startChan := make( chan int )
     wda.startChan = startChan
     wda.start()
     
@@ -180,14 +180,25 @@ func runWindowSize( cmd *uc.Cmd ) {
     }
     
     wda,_ := wdaForDev( id )
-    startChan := make( chan bool )
+    
+    startChan := make( chan int )
+    
     if config.wdaMethod == "manual" {
-      wda.startWdaNng( func() { startChan <- true } )
+        wda.startWdaNng( func( err int ) {
+            startChan <- err
+        } )
     } else {
-      wda.startChan = startChan
-      wda.start()
+        wda.startChan = startChan
+        wda.start()
     }
-    <- startChan
+    
+    err := <- startChan
+    if err != 0 {
+        fmt.Printf("Could not start/connect to WDA. Exiting")
+        runCleanup( cmd )
+        return
+    }
+    
     fmt.Printf("WDA supposedly started")
     
     wda.ensureSession()
@@ -211,14 +222,23 @@ func runSource( cmd *uc.Cmd ) {
     }
     
     wda,_ := wdaForDev( id )
-    startChan := make( chan bool )
+    
+    startChan := make( chan int )
+    
     if config.wdaMethod == "manual" {
-      wda.startWdaNng( func() { startChan <- true } )
+        wda.startWdaNng( func( err int ) {
+            startChan <- err
+        } )
     } else {
-      wda.startChan = startChan
-      wda.start()
+        wda.startChan = startChan
+        wda.start()
     }
-    <- startChan
+    err := <- startChan
+    if err != 0 {
+        fmt.Printf("Error starting/connecting to WDA\n")
+        runCleanup( cmd )
+        return
+    }
     fmt.Printf("WDA supposedly started")
     
     //wda.ensureSession()
@@ -278,6 +298,9 @@ func runMain( cmd *uc.Cmd ) {
 
 func setupLog( debug bool, warn bool ) {
     //log.SetFormatter(&log.JSONFormatter{})
+    log.SetFormatter(&log.TextFormatter{
+        DisableTimestamp: true,
+    })
     log.SetOutput(os.Stdout)
     if debug {
         log.SetLevel( log.DebugLevel )

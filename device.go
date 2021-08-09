@@ -26,6 +26,7 @@ const (
 const (
     DEV_STOP = iota
     DEV_WDA_START
+    DEV_WDA_START_ERR
     DEV_WDA_STOP
     DEV_VIDEO_START
     DEV_VIDEO_STOP
@@ -69,6 +70,7 @@ type Device struct {
     bridge          BridgeDev
     backupVideo     *BackupVideo
     backupActive    bool
+    shuttingDown  bool
 }
 
 func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev BridgeDev ) (*Device) {
@@ -107,6 +109,10 @@ func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev Bri
     return &dev
 }
 
+func ( self *Device ) isShuttingDown() bool {
+    return self.shuttingDown;
+}
+
 func ( self *Device ) releasePorts() {
     dt := self.devTracker
     if !self.wdaPortFixed {
@@ -143,6 +149,10 @@ type DevEvent struct {
 }
 
 func (self *Device) shutdown() {
+    self.endProcs()
+    
+    self.shutdownVidStream()
+    
     go func() { self.EventCh <- DevEvent{ action: DEV_STOP } }()
     go func() { self.BackupCh <- BackupEvent{ action: VID_END } }()
     
@@ -152,9 +162,22 @@ func (self *Device) shutdown() {
             "udid": censorUuid( self.udid ),
             "proc": proc.name,
             "pid":  proc.pid,
-        } ).Info("Shutdown proc")
+        } ).Info("Shutting down " + proc.name + " process")
         go func() { proc.Kill() }()
     }
+}
+
+func (self *Device) onWdaReady() {
+    self.wdaRunning = true
+    self.cf.notifyWdaStarted( self.udid )
+    self.wda.ensureSession()
+    // start video streaming
+    
+    self.forwardVidPorts( self.udid, func() {
+        self.enableVideo()
+        
+        self.startProcs2()
+    } )
 }
 
 func (self *Device) startEventLoop() {
@@ -167,16 +190,11 @@ func (self *Device) startEventLoop() {
                 if action == DEV_STOP { // stop event loop
                     break DEVEVENTLOOP
                 } else if action == DEV_WDA_START { // WDA started
-                    self.wdaRunning = true
-                    self.cf.notifyWdaStarted( self.udid )
-                    self.wda.ensureSession()
-                    // start video streaming
-                    
-                    self.forwardVidPorts( self.udid, func() {
-                        self.enableVideo()
-                        
-                        self.startProcs2()
-                    } )
+                    self.onWdaReady()
+                } else if action == DEV_WDA_START_ERR {
+                    fmt.Printf("Error starting/connecting to WDA.\n")
+                    self.shutdown()
+                    break DEVEVENTLOOP
                 } else if action == DEV_WDA_STOP { // WDA stopped
                     self.wdaRunning = false
                     self.cf.notifyWdaStopped( self.udid )
@@ -231,6 +249,7 @@ func (self *Device) disableBackupVideo() {
     fmt.Printf("Sent vid_disable\n")
     self.vidMode = VID_APP
     self.backupActive = false
+    self.vidStreamer.forceOneFrame()
 }
 
 func (self *Device) enableBackupVideo() {
@@ -414,7 +433,8 @@ func (self *Device) startVidStream() { // conn *ws.Conn ) {
     
     imgConsumer := NewImageConsumer( func( text string, data []byte ) (error) {
         if self.vidMode != VID_APP { return nil }
-        // conn.WriteMessage( ws.TextMessage, []byte( fmt.Sprintf("{\"action\":\"normalFrame\"}") ) )
+        //conn.WriteMessage( ws.TextMessage, []byte( fmt.Sprintf("{\"action\":\"normalFrame\"}") ) )
+        conn.WriteMessage( ws.TextMessage, []byte( text ) )
         return conn.WriteMessage( ws.BinaryMessage, data )
     }, func() {
         // there are no frames to send
@@ -424,6 +444,12 @@ func (self *Device) startVidStream() { // conn *ws.Conn ) {
         self.vidStreamer.setImageConsumer( imgConsumer )
         fmt.Printf("Telling video stream to start\n")
         controlChan <- 1 // start
+    }
+}
+
+func (self *Device) shutdownVidStream() {
+    if self.vidOut != nil {
+        self.stopVidStream()
     }
 }
 

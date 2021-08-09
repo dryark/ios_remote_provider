@@ -117,7 +117,11 @@ func (self *IIFBridge) destroy() {
 }
 
 func NewIIFDev( bridge *IIFBridge, udid string, name string ) (*IIFDev) {
-  fmt.Printf("Creating IIFDev with udid=%s\n", udid )
+  log.WithFields( log.Fields{
+      "type": "iifdev_create",
+      "udid": censorUuid( udid ),
+  } ).Debug( "Creating IIFDev" )
+  
   var procTracker ProcTracker = nil
   return &IIFDev{
     bridge: bridge,
@@ -244,14 +248,14 @@ func (self *IIFDev) tunnel( pairs []TunPair, onready func() ) {
     "-id", self.udid,
   }
   args = append( args, specs... )
-  fmt.Printf("Starting %s with %s\n", self.bridge.cli, args )
+  //fmt.Printf("Starting %s with %s\n", self.bridge.cli, args )
   
   o := ProcOptions{
     procName: tunName,
     binary: self.bridge.cli,
     args: args,
     stdoutHandler: func( line string, plog *log.Entry ) {
-      fmt.Printf( "tunnel:%s\n", line )
+      //fmt.Printf( "tunnel:%s\n", line )
       if strings.Contains( line, "Ready" ) {
         if onready != nil {
           onready()
@@ -259,7 +263,7 @@ func (self *IIFDev) tunnel( pairs []TunPair, onready func() ) {
       }
     },
     stderrHandler: func( line string, plog *log.Entry ) {
-      fmt.Printf( "tunnel err:%s\n", line )
+      //fmt.Printf( "tunnel err:%s\n", line )
     },
     onStop: func( interface{} ) {
       log.Printf("%s stopped\n", tunName)
@@ -328,7 +332,7 @@ func (self *IIFDev) InstallApp( appPath string ) bool {
 
 func (self *IIFDev) info( names []string ) map[string]string {
   mapped := make( map[string]string )
-  fmt.Printf("udid for info: %s\n", self.udid )
+  //fmt.Printf("udid for info: %s\n", self.udid )
   args := []string {
     "info",
     "-json",
@@ -336,7 +340,7 @@ func (self *IIFDev) info( names []string ) map[string]string {
   }
   args = append( args, names... )
   json, _ := exec.Command( self.bridge.cli, args... ).Output()
-  fmt.Printf("json:%s\n",json)
+  //fmt.Printf("json:%s\n",json)
   root, _ := uj.Parse( json )
   
   for _,name := range names {
@@ -345,7 +349,7 @@ func (self *IIFDev) info( names []string ) map[string]string {
       mapped[name] = node.String()
     }
   }
-  fmt.Printf("mapped result:%s\n",mapped)
+  //fmt.Printf("mapped result:%s\n",mapped)
   
   return mapped
 }
@@ -501,10 +505,10 @@ func (self *IIFDev) NewBackupVideo( port int, onStop func( interface{} ) ) ( *Ba
                 //vid.openBackupStream()
             }
             
-            fmt.Println( line )
+            //fmt.Printf( "backup video:%s\n", line )
         },
         stderrHandler: func( line string, plog *log.Entry ) {
-            fmt.Println( line )
+            //fmt.Printf( "backup video err:%s\n", line )
         },
     }
         
@@ -531,14 +535,14 @@ func (self *BackupVideo) GetFrame() []byte {
     return jpegBytes.Bytes()
 }
 
-func (self *IIFDev) wda( port int, onStart func(), onStop func(interface{}), mjpegPort int ) {
+func (self *IIFDev) wda( onStart func(), onStop func(interface{}) ) {
     config := self.bridge.config
     method := config.wdaMethod
     
     if method == "go-ios" {
-        self.wdaGoIos( port, onStart, onStop, mjpegPort )
+        self.wdaGoIos( onStart, onStop )
     } else if method == "tidevice" {
-        self.wdaTidevice( port, onStart, onStop, mjpegPort )
+        self.wdaTidevice( onStart, onStop )
     } else if method == "manual" {
         //self.wdaTidevice( port, onStart, onStop, mjpegPort )
     } else {
@@ -547,7 +551,7 @@ func (self *IIFDev) wda( port int, onStart func(), onStop func(interface{}), mjp
     }
 }
 
-func (self *IIFDev) wdaGoIos( port int, onStart func(), onStop func(interface{}), mjpegPort int ) {
+func (self *IIFDev) wdaGoIos( onStart func(), onStop func(interface{}) ) {
     f, err := os.OpenFile("wda.log",
         os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
     if err != nil {
@@ -579,21 +583,20 @@ func (self *IIFDev) wdaGoIos( port int, onStart func(), onStop func(interface{})
             if strings.Contains( line, "configuration is unsupported" ) {
                 plog.Println( line )
             }
-            fmt.Fprintln( f, line )
+            fmt.Fprintf( f, "runwda: %s\n", line )
         },
         stderrHandler: func( line string, plog *log.Entry ) {
             if strings.Contains(line, "NNG Ready") {
                 plog.WithFields( log.Fields{
                     "type": "wda_start",
                     "uuid": censorUuid(self.udid),
-                    "port": port,
                 } ).Info("[WDA] successfully started")
                 onStart()
             }
             if strings.Contains( line, "configuration is unsupported" ) {
                 plog.Println( line )
             }
-            fmt.Fprintln( f, line )
+            fmt.Fprintf( f, "runwda: %s\n", line )
         },
         onStop: func( wrapper interface{} ) {
             onStop( wrapper )
@@ -603,7 +606,7 @@ func (self *IIFDev) wdaGoIos( port int, onStart func(), onStop func(interface{})
     proc_generic( self.procTracker, nil, &o )
 }
 
-func (self *IIFDev) wdaTidevice( port int, onStart func(), onStop func(interface{}), mjpegPort int ) {
+func (self *IIFDev) wdaTidevice( onStart func(), onStop func(interface{}) ) {
     config := self.bridge.config
     tiPath := config.tidevicePath
     
@@ -629,7 +632,6 @@ func (self *IIFDev) wdaTidevice( port int, onStart func(), onStop func(interface
         "wdaproxy",
         "-B", bi,
         "-p", "0",
-        "-e", fmt.Sprintf("MJPEG_SERVER_PORT:%d",mjpegPort), 
     }
     
     fmt.Fprintf( f, "Starting WDA via %s with args %s\n", tiPath, strings.Join( args, " " ) )
@@ -643,7 +645,6 @@ func (self *IIFDev) wdaTidevice( port int, onStart func(), onStop func(interface
                 plog.WithFields( log.Fields{
                     "type": "wda_start",
                     "uuid": censorUuid(self.udid),
-                    "port": port,
                 } ).Info("[WDA] successfully started")
                 onStart()
             }
@@ -651,14 +652,12 @@ func (self *IIFDev) wdaTidevice( port int, onStart func(), onStop func(interface
                 plog.WithFields( log.Fields{
                     "type": "wda_start_err",
                     "uuid": censorUuid(self.udid),
-                    "port": port,
                 } ).Fatal("[WDA] Developer disk not mounted. Cannot start WDA")
             }
             if strings.Contains( line, "'No app matches'" ) {
                 plog.WithFields( log.Fields{
                     "type": "wda_start_err",
                     "uuid": censorUuid(self.udid),
-                    "port": port,
                     "rawErr": line,
                 } ).Fatal("[WDA] Incorrect WDA bundle id")
             }
