@@ -12,6 +12,7 @@ import (
     "net/url"
     "os"
     "strconv"
+    "strings"
     "sync"
     "time"
     "reflect"
@@ -379,8 +380,58 @@ func (self *ControlFloor) baseNotify( name string, udid string, vals url.Values 
             "type": "cf_notify",
             "name": name,
             "udid": censorUuid( udid ),
+            "values": vals,
         } ).Info( fmt.Sprintf("Notifying CF of %s", name) )
     }
+}
+
+func productTypeToCleanName( prodType string ) string {
+    if strings.HasPrefix( prodType, "iPhone" ) {
+        prodType = prodType[6:]
+        typeToName := map[string]string {
+            "1,1": "",            "1,2": "3G",         "2,1": "3GS",      "3,1": "4",
+            "3,2": "4",           "3,3": "4",          "4,1": "4S",       "4,2": "4S",
+            "4,3": "4S",          "5,1": "5",          "5,2": "5",        "5,3": "5C",
+            "5,4": "5C",          "6,1": "5S",         "6,2": "5S",       "7,2": "6",
+            "7,1": "6 Plus",      "8,1": "6S",         "8,2": "6S Plus",  "8,4": "SE",
+            "9,1": "7",           "9,3": "7",          "9,2": "7 Plus",   "9,4": "7 Plus",
+            "10,1": "8",          "10,4": "8",         "10,2": "8 Plus",  "10,5": "8 Plus",
+            "10,3": "X",          "10,6": "X",         "11,2": "Xs",      "11,4": "Xs Max",
+            "11,6": "Xs Max",     "11,8": "Xʀ",        "12,1": "11",      "12,3": "11 Pro",
+            "12,5": "11 Pro Max", "12,8": "SE 2",      "13,1": "12 mini", "13,2": "12",
+            "13,3": "12 Pro",     "13,4": "12 Pro Max",
+        }
+        name, exists := typeToName[ prodType ]
+        if exists { return "iPhone " + name }
+        return prodType
+    }
+    if strings.HasPrefix( prodType, "iPad" ) {
+        prodType = prodType[4:]
+        typeToName := map[string]string {
+            "1:1": "",              "2:1": "2",             "2:2": "2",             "2:3": "2",
+            "2:4": "2",             "3:1": "3",             "3:2": "3",             "3:3": "3",
+            "3:4": "4",             "3:5": "4",             "3:6": "4",             "6:11": "5",
+            "6:12": "5",            "7:5": "6",             "7:6": "6",             "7:11": "7",
+            "7:12": "7",            "11:6": "8",            "11:7": "8",            "4:1": "Air",
+            "4:2": "Air",           "4:3": "Air",           "5:3": "Air 2",         "5:4": "Air 2",
+            "11:3": "Air 3",        "11:4": "Air 3",        "13:1": "Air 4",        "13:2": "Air 4",
+            "2:5": "Mini",          "2:6": "Mini",          "2:7": "Mini",          "4:4": "Mini 2",
+            "4:5": "Mini 2",        "4:6": "Mini 2",        "4:7": "Mini 3",        "4:8": "Mini 3",
+            "4:9": "Mini 3",        "5:1": "Mini 4",        "5:2": "Mini 4",        "11:1": "Mini 5",
+            "11:2": "Mini 5",       "6:3": "Pro 9.7in",     "6:4": "Pro 9.7in",     "7:3": "Pro 10.5in",
+            "7:4": "Pro 10.5in",    "8:1": "Pro 11in",      "8:2": "Pro 11in",      "8:3": "Pro 11in",
+            "8:4": "Pro 11in",      "8:9": "Pro 11in 2",    "8:10": "Pro 11in 2",   "13:4": "Pro 11in 3",
+            "13:5": "Pro 11in 3",   "13:6": "Pro 11in 3",   "13:7": "Pro 11in 3",   "6:7": "Pro 12.9in",
+            "6:8": "Pro 12.9in",    "7:1": "Pro 12.9in 2",  "7:2": "Pro 12.9in 2",  "8:5": "Pro 12.9in 3",
+            "8:6": "Pro 12.9in 3",  "8:7": "Pro 12.9in 3",  "8:8": "Pro 12.9in 3",  "8:11": "Pro 12.9in 4",
+            "8:12": "Pro 12.9in 4", "13:8": "Pro 12.9in 5", "13:9": "Pro 12.9in 5", "13:10": "Pro 12.9in 5",
+            "13:11": "Pro 12.9in 5",
+        }
+        name, exists := typeToName[ prodType ]
+        if exists { return "iPhone " + name }
+        return prodType
+    }
+    return prodType
 }
 
 func (self *ControlFloor) notifyDeviceInfo( dev *Device, artworkTraits uj.JNode ) {
@@ -394,6 +445,8 @@ func (self *ControlFloor) notifyDeviceInfo( dev *Device, artworkTraits uj.JNode 
     prodDescr := "unknown"
     if artworkTraits != nil {
         prodDescr = artworkTraits.Get("ArtworkDeviceProductDescription").String()
+    } else {
+        prodDescr = productTypeToCleanName( info[ "ProductType" ] )
     }
     str = str + "\"ArtworkDeviceProductDescription\":\"" + prodDescr + "\"\n"
     str = str + "}"

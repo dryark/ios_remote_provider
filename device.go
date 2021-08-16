@@ -149,9 +149,9 @@ type DevEvent struct {
 }
 
 func (self *Device) shutdown() {
-    self.endProcs()
+    go func() { self.endProcs() }()
     
-    self.shutdownVidStream()
+    go func() { self.shutdownVidStream() }()
     
     go func() { self.EventCh <- DevEvent{ action: DEV_STOP } }()
     go func() { self.BackupCh <- BackupEvent{ action: VID_END } }()
