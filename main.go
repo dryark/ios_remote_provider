@@ -44,6 +44,12 @@ func main() {
     uclop.AddCmd( "winsize", "Get device window size", runWindowSize, windowSizeOpts )
     uclop.AddCmd( "source", "Get device xml source", runSource, windowSizeOpts )
     
+    clickButtonOpts := uc.OPTS{
+        uc.OPT("-id","Udid of device",0),
+        uc.OPT("-label","Button label",uc.REQ),
+    }
+    uclop.AddCmd( "clickEl", "Click a named element", runClickEl, clickButtonOpts )
+    
     vidTestOpts := uc.OPTS{
         uc.OPT("-id","Udid of device",0),
     }
@@ -205,6 +211,49 @@ func runWindowSize( cmd *uc.Cmd ) {
     //wda.create_session("")
     wid, heg := wda.WindowSize()
     fmt.Printf("Width: %d, Height: %d\n", wid, heg )
+    wda.stop()
+    
+    runCleanup( cmd )
+}
+
+func runClickEl( cmd *uc.Cmd ) {
+    config := NewConfig( "config.json", "default.json", "calculated.json" )
+  
+    runCleanup( cmd )
+    
+    id := ""
+    idNode := cmd.Get("-id")
+    if idNode != nil {
+        id = idNode.String()
+    }
+    
+    wda,_ := wdaForDev( id )
+    
+    startChan := make( chan int )
+    
+    if config.wdaMethod == "manual" {
+        wda.startWdaNng( func( err int ) {
+            startChan <- err
+        } )
+    } else {
+        wda.startChan = startChan
+        wda.start()
+    }
+    
+    err := <- startChan
+    if err != 0 {
+        fmt.Printf("Could not start/connect to WDA. Exiting")
+        runCleanup( cmd )
+        return
+    }
+    
+    wda.ensureSession()
+    //wda.create_session("")
+    
+    label := cmd.Get("-label").String()
+    btnName := wda.ElByName( label )
+    wda.ElClick( btnName )
+    
     wda.stop()
     
     runCleanup( cmd )
