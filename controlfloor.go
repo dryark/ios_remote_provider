@@ -29,6 +29,7 @@ type ControlFloor struct {
     cookiejar  *cookiejar.Jar
     client     *http.Client
     root       uj.JNode
+	user       string
     pass       string
     lock       *sync.Mutex
     DevTracker *DeviceTracker
@@ -63,6 +64,7 @@ func NewControlFloor( config *Config ) (*ControlFloor, chan bool) {
         wsBase: "ws://" + config.cfHost,
         cookiejar: jar,
         client: client,
+		user: config.cfUsername,
         pass: pass,
         lock: &sync.Mutex{},
         vidConns: make( map[string] *ws.Conn ),
@@ -515,7 +517,7 @@ func (self *ControlFloor) checkLogin() (bool) {
 func (self *ControlFloor) login() (bool) {
     self.lock.Lock()
     
-    user := "first"
+    user := self.user
     pass := self.pass
     
     resp, err := self.client.PostForm( self.base + "/provider/login",
