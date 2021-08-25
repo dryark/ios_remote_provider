@@ -372,13 +372,6 @@ func (self *Device) enableVideo() {
         return
     }
     
-    //self.wda.ensureSession()
-    
-    //controlCenterMethod := "bottomUp"
-    //if self.devConfig != nil {
-    //    controlCenterMethod = self.devConfig.controlCenterMethod
-    //}
-    
     // if video app is not running, check if it is installed
     
     bid := self.config.vidAppBidPrefix + "." + self.config.vidAppBid
@@ -394,7 +387,7 @@ func (self *Device) enableVideo() {
             panic("Wrong vidstream version")
         }
       
-        self.wda.StartBroadcastStream( self.config.vidAppName, bid )//, controlCenterMethod )
+        self.wda.StartBroadcastStream( self.config.vidAppName, bid )
         self.vidMode = VID_APP
         return
     }
@@ -403,7 +396,7 @@ func (self *Device) enableVideo() {
     // install it, then start it
     success := self.bridge.InstallApp( "vidstream.xcarchive/Products/Applications/vidstream.app" )
     if success {
-        self.wda.StartBroadcastStream( self.config.vidAppName, bid )//, controlCenterMethod )
+        self.wda.StartBroadcastStream( self.config.vidAppName, bid )
         self.vidMode = VID_APP
         return
     }
@@ -512,4 +505,8 @@ func (self *Device) keys( keys string ) {
         codes = append( codes, code )
     }
     self.wda.keys( codes )
+}
+
+func (self *Device) source() string {
+    return self.wda.SourceJson()
 }

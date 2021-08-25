@@ -14,18 +14,18 @@ import (
 )
 
 type ImgHandler struct {
-    inSock      mangos.Socket
-    stopChan    chan bool
-    imgConsumer *ImageConsumer
-    mainCh      chan int
-    discard     bool
-    imgNum      int
-    sentSize    bool
+    inSock        mangos.Socket
+    stopChan      chan bool
+    imgConsumer   *ImageConsumer
+    mainCh        chan int
+    discard       bool
+    imgNum        int
+    sentSize      bool
     enableStream  func()
     disableStream func()
     udid          string
-    device      *Device
-    isUp        bool
+    device        *Device
+    isUp          bool
 }
 
 func NewImgHandler( stopChan chan bool, udid string, device *Device ) ( *ImgHandler ) {

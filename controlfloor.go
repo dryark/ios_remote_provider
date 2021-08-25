@@ -3,6 +3,7 @@ package main
 import (
     "bufio"
     "crypto/tls"
+    "encoding/json"
     "errors"
     "fmt"
     "io/ioutil"
@@ -127,12 +128,22 @@ type CFResponse interface {
 }
 
 type CFR_Pong struct {
-    id int
+    id   int
     text string
 }
 
 func (self *CFR_Pong) asText() string {
     return fmt.Sprintf("{id:%d,text:\"%s\"}\n",self.id, self.text)
+}
+
+type CFR_Source struct {
+    Id     int    `json:"id"`
+    Source string `json:"source"`
+}
+
+func (self *CFR_Source) asText() string {
+    text, _ := json.Marshal( self )
+    return string(text)
 }
 
 func ( self *ControlFloor ) startVidStream( udid string ) {
@@ -316,6 +327,17 @@ func ( self *ControlFloor ) openWebsocket() {
                 } else if mType == "stopStream" {
                     udid := root.Get("udid").String()
                     go func() { self.stopVidStream( udid ) }()
+                } else if mType == "source" {
+                    udid := root.Get("udid").String()
+                    go func() {
+                        dev := self.DevTracker.getDevice( udid )
+                        if dev != nil {
+                            source := dev.source()
+                            respondChan <- &CFR_Source{ Id: id, Source: source } 
+                        } else  {
+                            respondChan <- &CFR_Pong{ id: id, text: "done" }
+                        }
+                    } ()
                 }
             }
         }
@@ -362,19 +384,25 @@ func writeCFConfig( configPath string, pass string ) {
     }
 }
 
-func (self *ControlFloor) baseNotify( name string, udid string, vals url.Values ) {
+func (self *ControlFloor) baseNotify( name string, udid string, variant string, vals url.Values ) {
     ok := self.checkLogin()
     if ok == false {
         panic("Could not login when attempting '" + name + "' notify")
     }
     
-    resp, err := self.client.PostForm( self.base + "/provider/devStatus", vals )
+    resp, err := self.client.PostForm( self.base + "/provider/device/status/" + variant, vals )
     if err != nil {
         panic( err )
     }
     
     if resp.StatusCode != 200 {
-        fmt.Printf("Got status %d from '%s' notify\n", resp.StatusCode, name )
+        log.WithFields( log.Fields{
+            "type": "cf_notify_fail",
+            "variant": variant,
+            "udid": censorUuid( udid ),
+            "values": vals,
+            "httpStatus": resp.StatusCode,
+        } ).Error( fmt.Sprintf("Failure notifying CF of %s", name) )
     } else {
         log.WithFields( log.Fields{
             "type": "cf_notify",
@@ -451,16 +479,14 @@ func (self *ControlFloor) notifyDeviceInfo( dev *Device, artworkTraits uj.JNode 
     str = str + "\"ArtworkDeviceProductDescription\":\"" + prodDescr + "\"\n"
     str = str + "}"
     
-    self.baseNotify("device info", udid, url.Values{
-        "status": {"info"},
+    self.baseNotify("device info", udid, "info", url.Values{
         "udid": {udid},
         "info": {str},
     } )
 }
 
 func (self *ControlFloor) notifyDeviceExists( udid string, width int, height int, clickWidth int, clickHeight int ) {
-    self.baseNotify("device existence", udid, url.Values{
-        "status": {"exists"},
+    self.baseNotify("device existence", udid, "exists", url.Values{
         "udid": {udid},
         "width": {strconv.Itoa(width)},
         "height": {strconv.Itoa(height)},
@@ -470,36 +496,31 @@ func (self *ControlFloor) notifyDeviceExists( udid string, width int, height int
 }
 
 func (self *ControlFloor) notifyProvisionStopped( udid string ) {
-    self.baseNotify("provision stop", udid, url.Values{
-        "status": {"provisionStopped"},
+    self.baseNotify("provision stop", udid, "provisionStopped", url.Values{
         "udid": {udid},
     } )
 }
 
 func (self *ControlFloor) notifyWdaStopped( udid string ) {
-    self.baseNotify("wda stop", udid, url.Values{
-        "status": {"wdaStopped"},
+    self.baseNotify("WDA stop", udid, "wdaStopped", url.Values{
         "udid": {udid},
     } )
 }
 
 func (self *ControlFloor) notifyWdaStarted( udid string ) {
-    self.baseNotify("wda start", udid, url.Values{
-        "status": {"wdaStarted"},
+    self.baseNotify("WDA start", udid, "wdaStarted", url.Values{
         "udid": {udid},
     } )
 }
 
 func (self *ControlFloor) notifyVideoStopped( udid string ) {
-    self.baseNotify("video stop", udid, url.Values{
-        "status": {"videoStopped"},
+    self.baseNotify("video stop", udid, "videoStopped", url.Values{
         "udid": {udid},
     } )
 }
 
 func (self *ControlFloor) notifyVideoStarted( udid string ) {
-    self.baseNotify("video start", udid, url.Values{
-        "status": {"videoStarted"},
+    self.baseNotify("video start", udid, "videoStarted", url.Values{
         "udid": {udid},
     } )
 }

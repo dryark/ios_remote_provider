@@ -130,9 +130,6 @@ func (self *WDA) dialWdaNng() ( mangos.Socket, int, chan bool ) {
         return nil, 1, nil
     }
     
-    /*sec1, _ := time.ParseDuration( "5s" )
-    reqSock.SetOption( mangos.OptionRecvDeadline, sec1 )*/
-    
     if err = reqSock.Dial( spec ); err != nil {
         log.WithFields( log.Fields{
             "type": "err_socket_dial",
@@ -511,6 +508,14 @@ func (self *WDA) Source() string {
         
     return string(srcBytes)
 }
+
+func (self *WDA) SourceJson() string {
+    self.nngSocket.Send([]byte(`{ action: "sourcej" }`))
+    srcBytes, _ := self.nngSocket.Recv()
+        
+    return string(srcBytes)
+}
+
 
 func (self *WDA) StartBroadcastStream( appName string, bid string ) {
     sid := self.create_session( bid )

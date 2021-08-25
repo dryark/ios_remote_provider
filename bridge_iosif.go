@@ -239,8 +239,12 @@ func (self *IIFDev) tunnel( pairs []TunPair, onready func() ) {
   tunName := "tunnel"
   specs := []string{}
   for _,pair := range pairs {
-    tunName = fmt.Sprintf( "%s_%d->%d", tunName, pair.from, pair.to )
-    specs = append( specs, fmt.Sprintf("%d:%d",pair.from,pair.to) )
+    from := pair.from
+    to := pair.to
+    
+    tunName = fmt.Sprintf( "%s_%d->%d", tunName, from, to )
+    //specs = append( specs, fmt.Sprintf("%d:%d",from,to) )
+    specs = append( specs, strconv.Itoa( from ) + ":" + strconv.Itoa( to ) )
   }
   
   args := []string {
@@ -248,7 +252,7 @@ func (self *IIFDev) tunnel( pairs []TunPair, onready func() ) {
     "-id", self.udid,
   }
   args = append( args, specs... )
-  //fmt.Printf("Starting %s with %s\n", self.bridge.cli, args )
+  fmt.Printf("Starting %s with %s\n", self.bridge.cli, args )
   
   o := ProcOptions{
     procName: tunName,
