@@ -8,12 +8,25 @@ import (
 )
 
 func sanityChecks( config *Config, cmd *uc.Cmd ) bool {
-    // Verify iosif has been built / exists  
-    iosIfPath := config.iosIfPath
-    iosIfPath, _ = filepath.Abs( iosIfPath )
-    if _, err := os.Stat( iosIfPath ); os.IsNotExist( err ) {
-        fmt.Fprintf(os.Stderr,"%s does not exist. Rerun `make` to build iosif\n",iosIfPath)
-        return false
+    // Verify iosif has been built / exists
+    bridge := config.bridge
+    
+    if bridge == "go-ios" {
+        goIosPath := config.goIosPath
+        goIosPath, _ = filepath.Abs( goIosPath )
+        if _, err := os.Stat( goIosPath ); os.IsNotExist( err ) {
+            fmt.Fprintf(os.Stderr,"%s does not exist. Rerun `make` to build go-ios\n",goIosPath)
+            return false
+        }
+    }
+    
+    if bridge == "iosif" {
+        iosIfPath := config.iosIfPath
+        iosIfPath, _ = filepath.Abs( iosIfPath )
+        if _, err := os.Stat( iosIfPath ); os.IsNotExist( err ) {
+            fmt.Fprintf(os.Stderr,"%s does not exist. Rerun `make` to build iosif\n",iosIfPath)
+            return false
+        }
     }
     
     wdaPath := config.wdaPath

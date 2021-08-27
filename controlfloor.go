@@ -612,7 +612,7 @@ func doregister( config *Config ) (string) {
     if config.https {
         protocol = "https"
     }
-    resp, err := http.PostForm( protocol + "://" + config.cfHost + "/register",
+    resp, err := http.PostForm( protocol + "://" + config.cfHost + "/provider/register",
         url.Values{
             "regPass": {regPass},
             "username": {username},
