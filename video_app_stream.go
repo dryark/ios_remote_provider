@@ -49,17 +49,20 @@ type AppStream struct {
     imgHandler *ImgHandler
     controlSpec string
     vidSpec string
+    logSpec string
     udid string
     controlSocket mangos.Socket
+    logSocket mangos.Socket
     device *Device
 }
 
-func NewAppStream( stopChan chan bool, controlPort int, vidPort int, udid string, device *Device ) (*AppStream) {
+func NewAppStream( stopChan chan bool, controlPort int, vidPort int, vidLogPort int, udid string, device *Device ) (*AppStream) {
     self := &AppStream{
         stopChan: stopChan,
         imgHandler: NewImgHandler( stopChan, udid, device ),
         controlSpec: fmt.Sprintf( "tcp://127.0.0.1:%d", controlPort ),
         vidSpec: fmt.Sprintf( "tcp://127.0.0.1:%d", vidPort ),
+        logSpec: fmt.Sprintf( "tcp://127.0.0.1:%d", vidLogPort ),
         udid: udid,
         device: device,
     }
@@ -109,6 +112,45 @@ func (self *AppStream) openControl() (mangos.Socket,bool,chan bool) {
     return controlSocket,false,controlStopChan
 }
 
+func (self *AppStream) openLog() (mangos.Socket,bool,chan bool) {
+    var logSocket mangos.Socket
+    var logStopChan chan bool
+    failures := 0
+    for {
+        select {
+            case <- self.stopChan: return nil,true,nil
+            default:
+        }
+        var res int
+        logSocket, res, logStopChan = self.dialAppLog()
+        if res == 0 { break }
+        time.Sleep( time.Second * 10 )
+        failures = failures + 1
+        if failures >= 1 {
+            fmt.Printf("Failed to connect video app log 5 times. Giving up.")
+            return nil,true,nil
+        }
+    }
+    log.WithFields( log.Fields{
+        "type": "vidapp_log_connect",
+        "udid": censorUuid( self.udid ),
+    } ).Info("Vidapp - Log Connected")
+    
+    go func() {
+        for {
+            msg, err := self.logSocket.RecvMsg()
+            if err != nil { break }
+            log.WithFields( log.Fields{
+                "type": "vidapp_log",
+                "udid": censorUuid( self.udid ),
+                "msg": string(msg.Body),
+            } ).Info("Vidapp - Log")
+        }
+    }()
+    
+    return logSocket,false,logStopChan
+}
+
 func (self *AppStream) openVideo() (mangos.Socket,bool,chan bool) {
     var imgSocket mangos.Socket
     var vidStopChan chan bool
@@ -142,19 +184,28 @@ func (self *AppStream) mainLoop() {
         var imgSocket     mangos.Socket
         var controlStopChan chan bool
         var vidStopChan     chan bool
+        var logStopChan     chan bool
         
         //imgHandler := NewImgHandler( self.stopChan, self.udid )
         self.imgHandler.setEnableStream( func() {
+            fmt.Printf("Sending start to vidapp\n")
             self.controlSocket.Send([]byte(`{"action": "start"}`))
         } )
         self.imgHandler.setDisableStream( func() {
+            fmt.Printf("Sending stop to vidapp\n")
             self.controlSocket.Send([]byte(`{"action": "stop"}`))
         } )
+        
+        firstConnect := true
         
         for {
             var done bool
             if self.controlSocket == nil {
                 self.controlSocket,done,controlStopChan = self.openControl()
+                if done { break }
+            }
+            if self.logSocket == nil {
+                self.logSocket,done,logStopChan = self.openLog()
                 if done { break }
             }
             if imgSocket == nil {
@@ -163,17 +214,26 @@ func (self *AppStream) mainLoop() {
             }
             
             self.imgHandler.setSource( imgSocket )
-            res := self.imgHandler.mainLoop( vidStopChan, controlStopChan )
+            if firstConnect {
+                self.controlSocket.Send([]byte(`{"action": "start"}`))
+                firstConnect = false
+            }
+            res := self.imgHandler.mainLoop( vidStopChan, controlStopChan, logStopChan )
             if res == 1 { break } // stopChan
             if res == 2 { imgSocket = nil } // imgSocket connection lost
             if res == 3 { self.controlSocket = nil } // controlSocket connection lost
             if res == 4 { // lost send socket
-                // TODO: Reconnect send socket
-            } 
+                fmt.Printf("Lost send socket; disabling video stream\n")
+                self.controlSocket.Send([]byte(`{"action": "stop"}`))
+            }
+            if res == 5 {
+                self.logSocket = nil
+            }
         }
         
         if self.controlSocket != nil { self.controlSocket.Close() }
         if imgSocket          != nil { imgSocket.Close() }
+        if self.logSocket     != nil { self.logSocket.Close() }
     }()
 }
 
@@ -252,5 +312,39 @@ func (self *AppStream) dialAppControl() ( mangos.Socket, int, chan bool ) {
     } )
     
     return reqSock, 0, controlStopChan
+}
+
+func (self *AppStream) dialAppLog() ( mangos.Socket, int, chan bool ) {
+    logSpec := self.logSpec
+    
+    var err error
+    var reqSock mangos.Socket
+    
+    if reqSock, err = nanoPull.NewSocket(); err != nil {
+        log.WithFields( log.Fields{
+            "type":     "err_socket_new",
+            "zmq_spec": logSpec,
+            "err":      err,
+        } ).Info("Socket new error")
+        return nil, 1, nil
+    }
+    
+    if err = reqSock.Dial( logSpec ); err != nil {
+        log.WithFields( log.Fields{
+            "type": "err_socket_dial",
+            "spec": logSpec,
+            "err":  err,
+        } ).Info("Socket dial error")
+        return nil, 2, nil
+    }
+    
+    logStopChan := make( chan bool )
+    
+    reqSock.SetPipeEventHook( func( action mangos.PipeEvent, pipe mangos.Pipe ) {
+        //fmt.Printf("Pipe action %d\n", action )
+        if action == 2 { logStopChan <- true }
+    } )
+    
+    return reqSock, 0, logStopChan
 }
 

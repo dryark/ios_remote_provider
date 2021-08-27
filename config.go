@@ -20,6 +20,7 @@ type CDevice struct {
 
 type Config struct {
     iosIfPath    string
+    goIosPath    string
     httpPort     int
     cfHost       string
     cfUsername   string
@@ -37,6 +38,7 @@ type Config struct {
     vidAppBidPrefix string
     vidAppExtBid string
     portRange    string
+    bridge       string
 }
 
 func GetStr( root uj.JNode, path string ) string {
@@ -70,6 +72,7 @@ func NewConfig( configPath string, defaultsPath string, calculatedPath string ) 
     root := loadConfig( configPath, defaultsPath, calculatedPath )
     
     config.iosIfPath  = GetStr(  root, "bin_paths.iosif" )
+    config.goIosPath  = GetStr(  root, "bin_paths.goios" )
     config.httpPort   = GetInt(  root, "port" )
     config.cfHost     = GetStr(  root, "controlfloor.host" )
     config.cfUsername = GetStr(  root, "controlfloor.username" )
@@ -85,6 +88,7 @@ func NewConfig( configPath string, defaultsPath string, calculatedPath string ) 
     config.vidAppExtBid    = GetStr( root, "vidapp.extBundleId" )
     config.vidAppBidPrefix = GetStr( root, "vidapp.bundleIdPrefix" )
     config.portRange = GetStr( root, "portRange" )
+    config.bridge    = GetStr( root, "bridge" )
     
     tideviceNode := root.Get( "tidevice" )
     if tideviceNode != nil {

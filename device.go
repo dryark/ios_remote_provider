@@ -44,6 +44,7 @@ type Device struct {
     wdaNngPort      int
     vidPort         int
     vidControlPort  int
+    vidLogPort      int
     backupVideoPort int
     mjpegVideoPort  int
     iosVersion      string
@@ -80,6 +81,7 @@ func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev Bri
         wdaPortFixed:    false,
         wdaNngPort:      devTracker.getPort(),
         vidPort:         devTracker.getPort(),
+        vidLogPort:      devTracker.getPort(),
         vidMode:         VID_NONE,
         vidControlPort:  devTracker.getPort(),
         backupVideoPort: devTracker.getPort(),
@@ -120,6 +122,7 @@ func ( self *Device ) releasePorts() {
     }
     dt.freePort( self.wdaNngPort )
     dt.freePort( self.vidPort )
+    dt.freePort( self.vidLogPort )
     dt.freePort( self.vidControlPort )
     dt.freePort( self.backupVideoPort )
     dt.freePort( self.mjpegVideoPort )
@@ -359,7 +362,13 @@ func (self *Device) startProcs() {
 
 func (self *Device) startProcs2() {
     self.appStreamStopChan = make( chan bool )
-    self.vidStreamer = NewAppStream( self.appStreamStopChan, self.vidControlPort, self.vidPort, self.udid, self )
+    self.vidStreamer = NewAppStream(
+        self.appStreamStopChan,
+        self.vidControlPort,
+        self.vidPort,
+        self.vidLogPort,
+        self.udid,
+        self )
     self.vidStreamer.mainLoop()
 }
 
@@ -391,6 +400,8 @@ func (self *Device) enableVideo() {
         self.vidMode = VID_APP
         return
     }
+    
+    fmt.Printf("Vidstream not installed; attempting to install\n")
     
     // if video app is not installed
     // install it, then start it
@@ -455,6 +466,7 @@ func (self *Device) forwardVidPorts( udid string, onready func() ) {
     self.bridge.tunnel( []TunPair{
         TunPair{ from: self.vidPort, to: 8352 },
         TunPair{ from: self.vidControlPort, to: 8351 },
+        TunPair{ from: self.vidLogPort, to: 8353 },
     }, onready )
 } 
 

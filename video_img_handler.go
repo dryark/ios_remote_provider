@@ -117,8 +117,13 @@ func ( self *ImgHandler ) processImgMsg() (int) {
         
         //fmt.Printf("ow=%d, oh=%d, dw=%d, dh=%d\n", ow, oh, dw, dh )
         
-        cause := root.Get("c").Int()
-        crc := root.Get("crc").String()
+        causeNode := root.Get("c")
+        cause := -1
+        if causeNode != nil { cause = causeNode.Int() }
+        
+        crcNode := root.Get("crc")
+        crc := "n/a"
+        if crcNode != nil { crc = crcNode.String() }
         
         text = fmt.Sprintf("{\"Width\": %d, \"Height\": %d, \"Size\": %d, \"Cause\": %d, \"Crc\": \"%s\"}",
           dw, dh, len( msg.Body ), cause, crc )
@@ -152,9 +157,9 @@ func ( self *ImgHandler ) processImgMsg() (int) {
     return 0
 }
 
-func ( self *ImgHandler ) mainLoop( vidStopChan chan bool, controlStopChan chan bool) (int) {
-    self.enableStream()
+func ( self *ImgHandler ) mainLoop( vidStopChan chan bool, controlStopChan chan bool, logStopChan chan bool) (int) {
     var res int
+    reason := "unknown"
     
     log.WithFields( log.Fields{
         "type": "video_handler_start",
@@ -166,6 +171,10 @@ func ( self *ImgHandler ) mainLoop( vidStopChan chan bool, controlStopChan chan 
                 fmt.Printf("Lost connection to control socket\n")
                 res = 3
                 goto DONE
+            case <- logStopChan:
+                fmt.Printf("Lost connection to log socket\n")
+                res = 5
+                goto DONE
             case <- vidStopChan:
                 fmt.Printf("Lost connection to video stream\n")
                 self.isUp = false
@@ -175,9 +184,11 @@ func ( self *ImgHandler ) mainLoop( vidStopChan chan bool, controlStopChan chan 
             case <- self.stopChan:
                 //fmt.Printf("Server channel got stop message\n")
                 res = 1
+                reason = "Got stop message"
                 goto DONE
             case msg := <- self.mainCh:
                 if msg == 1 {
+                    self.enableStream()
                     fmt.Printf("Setting discard to false\n")
                     self.discard = false
                 } 
@@ -194,6 +205,7 @@ func ( self *ImgHandler ) mainLoop( vidStopChan chan bool, controlStopChan chan 
         }
         if pres == 3 { // lost send socket
             res = 4
+            reason = "Lost send socket"
             goto DONE
         }
         self.imgNum++
@@ -203,6 +215,7 @@ func ( self *ImgHandler ) mainLoop( vidStopChan chan bool, controlStopChan chan 
     log.WithFields( log.Fields{
         "type": "video_handler_stop",
         "udid": censorUuid( self.udid ),
+        "reason": reason,
     } ).Info("Video handler stop")
     self.disableStream()
     return res

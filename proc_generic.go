@@ -139,19 +139,44 @@ func proc_generic( procTracker ProcTracker, wrapper interface{}, opt *ProcOption
             status := cmd.Status()
             
             if status.Error != nil {
+                errStream := cmd.Stderr
+                
+                errText := ""
+                for {
+                  select {
+                    case line, _ := <- errStream:
+                      errText = errText + line
+                    default:
+                      break
+                  }
+                }
+                
                 plog.WithFields( log.Fields{
                     "type":  "proc_err",
                     "error": status.Error,
+                    "text": errText,
                 } ).Error("Error starting - " + opt.procName)
                 
                 return
             }
             
             if status.Exit != -1 {
+                errStream := cmd.Stderr
+                errText := ""
+                for {
+                  select {
+                    case line, _ := <- errStream:
+                      errText = errText + line
+                    default:
+                      break
+                  }
+                }
+                
                 plog.WithFields( log.Fields{
                     "type": "proc_exit",
                     "exit": status.Exit,
                     "args": opt.args,
+                    "text": errText,
                 } ).Error("Error starting - " + opt.procName)
                 
                 return

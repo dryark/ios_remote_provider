@@ -2,7 +2,7 @@
 
 TARGET = main
 
-all: $(TARGET) bin/iosif repos/vidapp/versionMarker bin/go-ios
+all: $(TARGET) repos/vidapp/versionMarker bin/go-ios
 
 bin/gojq: repos/ujsonin/versionMarker
 	make -C repos/ujsonin gojq && touch bin/gojq

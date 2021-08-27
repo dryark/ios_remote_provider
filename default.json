@@ -6,7 +6,9 @@
     bin_paths: {
         iosif: "bin/iosif"
         wda: "bin/wda"
+        goios: "bin/go-ios"
     }
+    bridge: "go-ios"
     repos: {
         wda: "https://github.com/nanoscopic/WebDriverAgent.git"
         ujsonin: "https://github.com/nanoscopic/ujsonin.git"

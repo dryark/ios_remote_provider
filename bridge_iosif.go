@@ -38,7 +38,7 @@ type IIFDev struct {
 }
 
 // IosIF bridge
-func NewIIFBridge( config *Config, OnConnect func( dev BridgeDev ) (ProcTracker), OnDisconnect func( dev BridgeDev ), iosIfPath string, procTracker ProcTracker, detect bool ) ( *IIFBridge ) {
+func NewIIFBridge( config *Config, OnConnect func( dev BridgeDev ) (ProcTracker), OnDisconnect func( dev BridgeDev ), iosIfPath string, procTracker ProcTracker, detect bool ) ( BridgeRoot ) {
   self := &IIFBridge{
     onConnect:    OnConnect,
     onDisconnect: OnDisconnect,

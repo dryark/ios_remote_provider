@@ -48,11 +48,19 @@ func NewDeviceTracker( config *Config, detect bool ) (*DeviceTracker) {
         cf: cf,
         cfStop: cfStop,
     }
-    self.bridge = NewIIFBridge(
+    
+    bridgeCreator := NewIIFBridge
+    bridgeCli := config.iosIfPath
+    if config.bridge == "go-ios" {
+        bridgeCreator = NewGIBridge
+        bridgeCli = config.goIosPath
+    }
+    
+    self.bridge = bridgeCreator(
         config,
         func( dev BridgeDev ) ProcTracker { return self.onDeviceConnect1( dev ) },
         func( dev BridgeDev ) { self.onDeviceDisconnect1( dev ) },
-        config.iosIfPath,
+        bridgeCli,
         self,
         detect,
     )

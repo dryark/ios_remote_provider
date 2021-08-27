@@ -189,11 +189,12 @@ func ( self *ControlFloor ) connectVidChannel( udid string ) *ws.Conn {
 // Called from the device object
 func ( self *ControlFloor ) destroyVidChannel( udid string ) {
     vidConn := self.vidConns[ udid ]
-    vidConn.Close()
     
     self.lock.Lock()
     delete( self.vidConns, udid )
     self.lock.Unlock()
+    
+    vidConn.Close()
 }
 
 func ( self *ControlFloor ) openWebsocket() {
