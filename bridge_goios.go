@@ -197,6 +197,7 @@ func (self *GIDev) GetPid( appname string ) int {
     json, err := exec.Command( self.bridge.cli,
         []string{
             "ps",
+            "--udid", self.udid,
         }... ).Output()
       
     if err != nil {
@@ -221,6 +222,7 @@ func (self *GIDev) AppInfo( bundleId string ) uj.JNode {
     json, err := exec.Command( self.bridge.cli,
         []string{
             "apps",
+            "--udid", self.udid,
         }... ).Output()
       
     if err != nil {
@@ -246,6 +248,7 @@ func (self *GIDev) InstallApp( appPath string ) bool {
         []string{
             "install",
             "--path", appPath,
+            "--udid", self.udid,
         }... ).Output()
     
     if strings.Contains( string(status), "Installing:100%" ) {
