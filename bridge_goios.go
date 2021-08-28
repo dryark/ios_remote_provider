@@ -4,6 +4,7 @@ import (
   "fmt"
   "os"
   "os/exec"
+  "regexp"
   "strconv"
   "strings"
   log "github.com/sirupsen/logrus"
@@ -344,7 +345,7 @@ func (self *GIDev) screenshot() Screenshot {
 //    imgId int
 //}
 
-func (self *GIDev) NewSyslogMonitor( handleLogItem func( uj.JNode ) ) {
+func (self *GIDev) NewSyslogMonitor( handleLogItem func( msg string, app string ) ) {
     o := ProcOptions{
         procName: "syslogMonitor",
         binary: self.bridge.cli,
@@ -363,6 +364,7 @@ func (self *GIDev) NewSyslogMonitor( handleLogItem func( uj.JNode ) ) {
             if err == nil {
                 msg := root.Get("msg").String()
                 self.handleLogLine( msg, handleLogItem )
+                //fmt.Printf("log:%s\n", line )
             } else {
                 fmt.Printf("Could not parse:[%s]\n", line )
             }
@@ -372,14 +374,42 @@ func (self *GIDev) NewSyslogMonitor( handleLogItem func( uj.JNode ) ) {
     proc_generic( self.procTracker, nil, &o )
 }
 
-func (self *GIDev) handleLogLine( msg string, handleLogItem func( uj.JNode ) ) {
+func (self *GIDev) handleLogLine( msg string, handleLogItem func( msg string, app string ) ) {
+    // Aug 28 01:29:25 iPhone kernel(AppleT8101)[0] \u003cNotice\u003e:
+    // Aug 28 01:29:25 iPhone kernel(AppleARMPlatform)[0] \u003cNotice\u003e:
+    // Aug 28 01:29:25 iPhone locationd[66] \u003cNotice\u003e:
+    // 01234567890123456
+    //namePos := 16
+    fromName := msg[16:] // iPhone kernel(AppleARMPlatform)[0] \u003cNotice\u003e:
+    nameEndPos := strings.IndexRune( fromName, ' ' )
+    fromCtx := fromName[nameEndPos+1:] // kernel(AppleARMPlatform)[0] \u003cNotice\u003e:
+    ctxEndPos := strings.IndexRune( fromCtx, '[' )
+    ctx := fromCtx[:ctxEndPos] // kernel(AppleARMPlatform)
+    afterCtx := fromCtx[ctxEndPos:] // [0] \u003cNotice\u003e:
+    typePos := strings.IndexRune( afterCtx, 'c' )
+    fromType := afterCtx[ typePos+1: ] // Notice\u003e:
+    //typeEndPos := strings.IndexRune( fromType, '\\' )
+    //msgType := fromType[:typeEndPos-1] // Notice
+    restPos := strings.IndexRune( fromType, ':' )
+    rest := fromType[restPos+2:]
+    //fmt.Printf("Log ctx[%s] rest:%s\n", ctx, rest )
     
+    rx := regexp.MustCompile(`\\u[0-9a-fA-F]{4}`)
+    rest = rx.ReplaceAllStringFunc( rest, func( str string ) string {
+        str = str[2:]
+        num, _ := strconv.ParseInt(str, 16, 64)
+        res := string( rune( num ) )
+        //fmt.Printf("converting %s to %s\n", str, res )
+        return res
+    } )
+    
+    handleLogItem( rest, ctx )    
 }
 
 func (self *GIDev) NewBackupVideo( port int, onStop func( interface{} ) ) ( *BackupVideo ) {
     vid := &BackupVideo{
         port: port,
-        spec: fmt.Sprintf( "http://127.0.0.1:%d/frame", port ),
+        spec: fmt.Sprintf( "http://127.0.0.1:%d/frame?udid=%s", port, self.udid ),
     }
     
     o := ProcOptions{

@@ -51,5 +51,5 @@ type BridgeDev interface {
   GetPid( appname string ) int
   AppInfo( bundleId string ) uj.JNode
   InstallApp( appPath string ) bool
-  NewSyslogMonitor( handleLogItem func( uj.JNode ) )
+  NewSyslogMonitor( handleLogItem func( msg string, app string ) )
 }

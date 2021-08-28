@@ -8,7 +8,7 @@ import (
     "time"
     log "github.com/sirupsen/logrus"
     ws "github.com/gorilla/websocket"
-    uj "github.com/nanoscopic/ujsonin/v2/mod"
+    //uj "github.com/nanoscopic/ujsonin/v2/mod"
     //"go.nanomsg.org/mangos/v3"
     //nanoReq  "go.nanomsg.org/mangos/v3/protocol/req"
 )
@@ -326,9 +326,10 @@ func (self *Device) startProcs() {
     
     //self.enableBackupVideo()
     
-    self.bridge.NewSyslogMonitor( func( root uj.JNode ) {
-        msg := root.GetAt( 3 ).String()
-        app := root.GetAt( 1 ).String()
+    self.bridge.NewSyslogMonitor( func( msg string, app string ) {
+        //msg := root.GetAt( 3 ).String()
+        //app := root.GetAt( 1 ).String()
+        
         //fmt.Printf("Msg:%s\n", msg )
         
         if app == "SpringBoard(SpringBoard)" {

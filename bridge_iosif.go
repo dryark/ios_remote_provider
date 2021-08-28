@@ -417,7 +417,7 @@ type BackupVideo struct {
     imgId int
 }
 
-func (self *IIFDev) NewSyslogMonitor( handleLogItem func( uj.JNode ) ) {
+func (self *IIFDev) NewSyslogMonitor( handleLogItem func( msg string, app string ) ) {
     bufstr := ""
     toFetch := 0
     o := ProcOptions{
@@ -452,7 +452,9 @@ func (self *IIFDev) NewSyslogMonitor( handleLogItem func( uj.JNode ) ) {
                     json := line[ i: ]
                     root, _, err := uj.ParseFull( []byte( json ) )
                     if err == nil {
-                        handleLogItem( root )
+                        msg := root.GetAt( 3 ).String()
+                        app := root.GetAt( 1 ).String()
+                        handleLogItem( msg, app )
                     } else {
                         fmt.Printf("Could not parse:[%s]\n", json )
                     }
@@ -469,7 +471,9 @@ func (self *IIFDev) NewSyslogMonitor( handleLogItem func( uj.JNode ) ) {
                     
                     root, _, err := uj.ParseFull( []byte( bufstr ) )
                     if err == nil {
-                        handleLogItem( root )
+                        msg := root.GetAt( 3 ).String()
+                        app := root.GetAt( 1 ).String()
+                        handleLogItem( msg, app )
                     } else {
                         fmt.Printf("Could not parse:[%s]\n", bufstr )
                     }
@@ -529,7 +533,15 @@ func (self *BackupVideo) GetFrame() []byte {
     defer resp.Body.Close()
     //data, _ := ioutil.ReadAll( resp.Body )
     
-    img, _ := png.Decode( resp.Body ) 
+    data := resp.Body
+    img, err := png.Decode( data )
+    if err != nil {
+        fmt.Printf("Could not decode backup video frame: %s\n", err )
+        //if length( data ) < 300 {
+        //    fmt.Printf("Data: %s\n", data )
+        //}
+        return []byte{}
+    }
     img2 := nr.Resize( 0, 1000, img, nr.Lanczos3 )
     
     jpegBytes := bytes.Buffer{}
