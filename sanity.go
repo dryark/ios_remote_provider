@@ -29,11 +29,13 @@ func sanityChecks( config *Config, cmd *uc.Cmd ) bool {
         }
     }
     
-    wdaPath := config.wdaPath
-    wdaPath, _ = filepath.Abs( "./" + wdaPath )
-    if _, err := os.Stat( wdaPath ); os.IsNotExist( err ) {
-        fmt.Fprintf(os.Stderr,"%s does not exist. Rerun `make` to build WebDriverAgent\n",wdaPath)
-        return false
+    if config.wdaSanityCheck {
+        wdaPath := config.wdaPath
+        wdaPath, _ = filepath.Abs( "./" + wdaPath )
+        if _, err := os.Stat( wdaPath ); os.IsNotExist( err ) {
+            fmt.Fprintf(os.Stderr,"%s does not exist. Rerun `make` to build WebDriverAgent\n",wdaPath)
+            return false
+        }
     }
     
     return true

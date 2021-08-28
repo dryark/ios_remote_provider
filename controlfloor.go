@@ -537,7 +537,7 @@ func (self *ControlFloor) checkLogin() (bool) {
 func (self *ControlFloor) login() (bool) {
     self.lock.Lock()
     
-    user := "first"
+    user := self.config.cfUsername
     pass := self.pass
     
     resp, err := self.client.PostForm( self.base + "/provider/login",

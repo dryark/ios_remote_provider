@@ -17,8 +17,6 @@ config.mk: config.json bin/gojq
 
 provider_sources := $(wildcard *.go)
 
-@if [ "$(PROD_PATH)" != "" ]; then cp -r $(PROD_PATH)/ bin/wda/; fi;
-
 $(TARGET): config.mk $(provider_sources) go.mod
 	@if [ "$(config_jsonfail)" == "1" ]; then\
 		echo $(config_jsonerr) ;\
@@ -31,7 +29,7 @@ go.sum:
 	go get .
 
 clean:
-	$(RM) $(TARGET) go.sum
+	$(RM) $(TARGET)
 
 wdaclean:
 	$(RM) -rf repos/WebDriverAgent/build

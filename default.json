@@ -28,6 +28,7 @@
         }
         startMethod: "go-ios"
         keyMethod: "iohid"
+	sanityCheck: true
     },
     vidapp: {
         name: "CF Vidstream"

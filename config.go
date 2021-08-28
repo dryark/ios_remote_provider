@@ -33,6 +33,7 @@ type Config struct {
     wdaMethod    string
     wdaKeyMethod string
     wdaPrefix    string
+    wdaSanityCheck bool
     vidAppName   string
     vidAppBid    string
     vidAppBidPrefix string
@@ -83,6 +84,7 @@ func NewConfig( configPath string, defaultsPath string, calculatedPath string ) 
     config.wdaMethod  = GetStr(  root, "wda.startMethod" )
     config.wdaKeyMethod    = GetStr( root, "wda.keyMethod" )
     config.wdaPrefix       = GetStr( root, "wda.bundleIdPrefix" )
+    config.wdaSanityCheck  = GetBool( root, "wda.sanityCheck" )
     config.vidAppName      = GetStr( root, "vidapp.name" )
     config.vidAppBid       = GetStr( root, "vidapp.bundleId" )
     config.vidAppExtBid    = GetStr( root, "vidapp.extBundleId" )
