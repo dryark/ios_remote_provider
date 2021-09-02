@@ -18,27 +18,31 @@ func coro_sigterm( config *Config, devTracker *DeviceTracker ) {
     signal.Notify(c, os.Interrupt, syscall.SIGTERM)
     go func() {
         <- c
-        log.WithFields( log.Fields{
-            "type":  "sigterm",
-            "state": "begun",
-        } ).Info("Shutdown started")
-
-        devTracker.shutdown()
-        
-        log.WithFields( log.Fields{
-            "type":  "sigterm",
-            "state": "stopped",
-        } ).Info("Normal stop done... cleaning up leftover procs")
-
-        cleanup_procs( config )
-        
-        log.WithFields( log.Fields{
-            "type":  "sigterm",
-            "state": "done",
-        } ).Info("Shutdown finished")
-        
-        os.Exit(0)
+        do_shutdown( config, devTracker )
     }()
+}
+
+func do_shutdown( config *Config, devTracker *DeviceTracker ) {
+    log.WithFields( log.Fields{
+        "type":  "sigterm",
+        "state": "begun",
+    } ).Info("Shutdown started")
+
+    devTracker.shutdown()
+    
+    log.WithFields( log.Fields{
+        "type":  "sigterm",
+        "state": "stopped",
+    } ).Info("Normal stop done... cleaning up leftover procs")
+
+    cleanup_procs( config )
+    
+    log.WithFields( log.Fields{
+        "type":  "sigterm",
+        "state": "done",
+    } ).Info("Shutdown finished")
+    
+    os.Exit(0)
 }
 
 type Aproc struct {

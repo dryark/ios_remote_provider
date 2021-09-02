@@ -276,7 +276,7 @@ func (self *IIFDev) tunnel( pairs []TunPair, onready func() ) {
   proc_generic( self.procTracker, nil, &o )
 }
 
-func GetDevs( config *Config ) []string {
+func (self *IIFBridge) GetDevs( config *Config ) []string {
   json, _ := exec.Command( config.iosIfPath,
     []string{ "list", "-json" }... ).Output()
   root, _ := uj.Parse( []byte( "[" + string(json) + "]" ) )
@@ -287,7 +287,7 @@ func GetDevs( config *Config ) []string {
   return res
 }
 
-func (self *IIFDev) GetPid( appname string ) int {
+func (self *IIFDev) GetPid( appname string ) uint64 {
   json, err := exec.Command( self.bridge.cli,
     []string{
       "ps",
@@ -305,7 +305,10 @@ func (self *IIFDev) GetPid( appname string ) int {
   root, _ := uj.Parse( []byte( jsonS ) )
   pidNode := root.Get("pid")
   if pidNode == nil { return 0 }
-  return pidNode.Int()
+  return uint64( pidNode.Int() )
+}
+
+func (self *IIFDev) Kill( pid uint64 ) {
 }
 
 func (self *IIFDev) AppInfo( bundleId string ) uj.JNode {

@@ -339,6 +339,8 @@ func ( self *ControlFloor ) openWebsocket() {
                             respondChan <- &CFR_Pong{ id: id, text: "done" }
                         }
                     } ()
+                } else if mType == "shutdown" {
+                    do_shutdown( self.config, self.DevTracker )
                 }
             }
         }

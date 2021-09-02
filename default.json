@@ -28,7 +28,7 @@
         }
         startMethod: "go-ios"
         keyMethod: "iohid"
-	sanityCheck: true
+        sanityCheck: true
     },
     vidapp: {
         name: "CF Vidstream"
@@ -46,4 +46,16 @@
     wdaXctestRunFolder: "repos/WebDriverAgent/build/Build/Products"
     port: 8027
     portRange: "8101-8200"
+    alerts: [
+        {
+            match: "invalid broadcast session"
+            response: "OK"
+        }
+    ]
+    vidStartAlerts: [
+        {
+            match: "invalid broadcast session"
+            response: "OK"
+        }
+    ]
 }

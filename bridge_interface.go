@@ -29,6 +29,7 @@ type BridgeRoot interface {
   //OnConnect( dev BridgeDev )
   //OnDisconnect( dev BridgeDev )
   list() []BridgeDevInfo
+  GetDevs(*Config) []string
 }
 
 type iProc struct {
@@ -48,8 +49,9 @@ type BridgeDev interface {
   destroy()
   setProcTracker( procTracker ProcTracker )
   NewBackupVideo( port int, onStop func( interface{} ) ) ( *BackupVideo )
-  GetPid( appname string ) int
+  GetPid( appname string ) uint64
   AppInfo( bundleId string ) uj.JNode
   InstallApp( appPath string ) bool
   NewSyslogMonitor( handleLogItem func( msg string, app string ) )
+  Kill( pid uint64 )
 }

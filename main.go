@@ -27,12 +27,7 @@ func main() {
     uclop.AddCmd( "run", "Run ControlFloor", runMain, runOpts )
     uclop.AddCmd( "register", "Register against ControlFloor", runRegister, commonOpts )
     uclop.AddCmd( "cleanup", "Cleanup leftover processes", runCleanup, nil )
-    
-    clickOpts := uc.OPTS{
-        uc.OPT("-el","Element name to click",0),
-    }
-    uclop.AddCmd( "click", "Click element", runClick, clickOpts )
-    
+
     wdaOpts := uc.OPTS{
         uc.OPT("-id","Udid of device",0),
     }
@@ -43,6 +38,7 @@ func main() {
     }
     uclop.AddCmd( "winsize", "Get device window size", runWindowSize, windowSizeOpts )
     uclop.AddCmd( "source", "Get device xml source", runSource, windowSizeOpts )
+    uclop.AddCmd( "alertinfo", "Get alert info", runAlertInfo, windowSizeOpts )
     
     clickButtonOpts := uc.OPTS{
         uc.OPT("-id","Udid of device",0),
@@ -58,41 +54,56 @@ func main() {
     uclop.Run()
 }
 
-func wdaForDev( id string ) (*WDA,*DeviceTracker) {
+func wdaForDev( id string ) (*WDA,*DeviceTracker,*Device) {
     config := NewConfig( "config.json", "default.json", "calculated.json" )
     
-    devs := GetDevs( config )
+    tracker := NewDeviceTracker( config, false )
+    
+    devs := tracker.bridge.GetDevs( config )
     dev1 := id
     if id == "" {
         dev1 = devs[0]
     }
     fmt.Printf("Dev id: %s\n", dev1)
     
-    tracker := NewDeviceTracker( config, false )
-    iifDev := NewIIFDev( tracker.bridge.(*IIFBridge), dev1, "x" )
-    dev := NewDevice( config, tracker, dev1, iifDev )
-    iifDev.setProcTracker( tracker )
+    var bridgeDev BridgeDev
+    if config.bridge == "go-ios" {
+        bridgeDev = NewGIDev( tracker.bridge.(*GIBridge), dev1, "x" )
+    } else {
+        bridgeDev = NewIIFDev( tracker.bridge.(*IIFBridge), dev1, "x" )
+    }
+    
+    dev := NewDevice( config, tracker, dev1, bridgeDev )
+    bridgeDev.setProcTracker( tracker )
     dev.wdaPort = 8100
     wda := NewWDANoStart( config, tracker, dev )
-    return wda,tracker
+    return wda,tracker,dev
 }
 
 func vidTestForDev( id string ) (*DeviceTracker) {
     config := NewConfig( "config.json", "default.json", "calculated.json" )
     
-    devs := GetDevs( config )
+    tracker := NewDeviceTracker( config, false )
+    
+    devs := tracker.bridge.GetDevs( config )
     dev1 := id
     if id == "" {
         dev1 = devs[0]
     }
     fmt.Printf("Dev id: %s\n", dev1)
+
+    var bridgeDev BridgeDev
+    if config.bridge == "go-ios" {
+        bridgeDev = NewGIDev( tracker.bridge.(*GIBridge), dev1, "x" )
+    } else {
+        bridgeDev = NewIIFDev( tracker.bridge.(*IIFBridge), dev1, "x" )
+    }
     
-    tracker := NewDeviceTracker( config, false )
-    iifDev := NewIIFDev( tracker.bridge.(*IIFBridge), dev1, "x" )
-    dev := NewDevice( config, tracker, dev1, iifDev )
+    dev := NewDevice( config, tracker, dev1, bridgeDev )
+    
     tracker.DevMap[ dev1 ] = dev
     
-    iifDev.setProcTracker( tracker )
+    bridgeDev.setProcTracker( tracker )
     
     dev.startBackupVideo()
     
@@ -110,8 +121,8 @@ func runWDA( cmd *uc.Cmd ) {
       id = idNode.String()
     }
     
-    wda,tracker := wdaForDev( id )
-    wda.start()
+    wda,tracker,_ := wdaForDev( id )
+    wda.start( nil )
  
     dotLoop( cmd, tracker )
 }
@@ -156,25 +167,14 @@ func dotLoop( cmd *uc.Cmd, tracker *DeviceTracker ) {
     runCleanup( cmd )
 }
 
-
-
-func runClick( cmd *uc.Cmd ) {
-    runCleanup( cmd )
-    
-    wda,tracker := wdaForDev("")
-    startChan := make( chan int )
-    wda.startChan = startChan
-    wda.start()
-    
-    <- startChan
-    
-    wda.ensureSession()
-    // todo
-    
-    dotLoop( cmd, tracker )
+func runWindowSize( cmd *uc.Cmd ) {
+    wdaWrapped( cmd, func( wda *WDA ) {
+      wid, heg := wda.WindowSize()
+        fmt.Printf("Width: %d, Height: %d\n", wid, heg )
+    } )
 }
 
-func runWindowSize( cmd *uc.Cmd ) {
+func wdaWrapped( cmd *uc.Cmd, doStuff func( wda *WDA ) ) {
     config := NewConfig( "config.json", "default.json", "calculated.json" )
   
     runCleanup( cmd )
@@ -185,17 +185,22 @@ func runWindowSize( cmd *uc.Cmd ) {
         id = idNode.String()
     }
     
-    wda,_ := wdaForDev( id )
+    wda,_,dev := wdaForDev( id )
     
     startChan := make( chan int )
     
+    var stopChan chan bool
     if config.wdaMethod == "manual" {
-        wda.startWdaNng( func( err int ) {
+        wda.startWdaNng( func( err int, AstopChan chan bool ) {
+            stopChan = AstopChan
+            startChan <- err
+        } )                             
+    } else {
+        //wda.startChan = startChan
+        wda.start( func( err int, AstopChan chan bool ) {
+            stopChan = AstopChan
             startChan <- err
         } )
-    } else {
-        wda.startChan = startChan
-        wda.start()
     }
     
     err := <- startChan
@@ -205,98 +210,38 @@ func runWindowSize( cmd *uc.Cmd ) {
         return
     }
     
-    fmt.Printf("WDA supposedly started")
-    
     wda.ensureSession()
-    //wda.create_session("")
-    wid, heg := wda.WindowSize()
-    fmt.Printf("Width: %d, Height: %d\n", wid, heg )
+    
+    doStuff( wda )
+    
+    stopChan <- true
+    
+    dev.shutdown()
     wda.stop()
     
     runCleanup( cmd )
 }
 
 func runClickEl( cmd *uc.Cmd ) {
-    config := NewConfig( "config.json", "default.json", "calculated.json" )
-  
-    runCleanup( cmd )
-    
-    id := ""
-    idNode := cmd.Get("-id")
-    if idNode != nil {
-        id = idNode.String()
-    }
-    
-    wda,_ := wdaForDev( id )
-    
-    startChan := make( chan int )
-    
-    if config.wdaMethod == "manual" {
-        wda.startWdaNng( func( err int ) {
-            startChan <- err
-        } )
-    } else {
-        wda.startChan = startChan
-        wda.start()
-    }
-    
-    err := <- startChan
-    if err != 0 {
-        fmt.Printf("Could not start/connect to WDA. Exiting")
-        runCleanup( cmd )
-        return
-    }
-    
-    wda.ensureSession()
-    //wda.create_session("")
-    
-    label := cmd.Get("-label").String()
-    btnName := wda.ElByName( label )
-    wda.ElClick( btnName )
-    
-    wda.stop()
-    
-    runCleanup( cmd )
+    wdaWrapped( cmd, func( wda *WDA ) {
+        label := cmd.Get("-label").String()
+        btnName := wda.ElByName( label )
+        wda.ElClick( btnName )
+    } )
 }
 
 func runSource( cmd *uc.Cmd ) {
-    config := NewConfig( "config.json", "default.json", "calculated.json" )
-  
-    runCleanup( cmd )
-    
-    id := ""
-    idNode := cmd.Get("-id")
-    if idNode != nil {
-        id = idNode.String()
-    }
-    
-    wda,_ := wdaForDev( id )
-    
-    startChan := make( chan int )
-    
-    if config.wdaMethod == "manual" {
-        wda.startWdaNng( func( err int ) {
-            startChan <- err
-        } )
-    } else {
-        wda.startChan = startChan
-        wda.start()
-    }
-    err := <- startChan
-    if err != 0 {
-        fmt.Printf("Error starting/connecting to WDA\n")
-        runCleanup( cmd )
-        return
-    }
-    fmt.Printf("WDA supposedly started")
-    
-    //wda.ensureSession()
-    wda.create_session("")
-    xml := wda.Source()
-    fmt.Println( xml )
-    wda.stop()
-    
-    runCleanup( cmd )
+    wdaWrapped( cmd, func( wda *WDA ) {
+        xml := wda.Source()
+        fmt.Println( xml )
+    } )
+}
+
+func runAlertInfo( cmd *uc.Cmd ) {
+    wdaWrapped( cmd, func( wda *WDA ) {
+        _, json := wda.AlertInfo()
+        fmt.Println( json )
+    } )
 }
 
 func common( cmd *uc.Cmd ) *Config {

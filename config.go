@@ -18,6 +18,11 @@ type CDevice struct {
     //controlCenterMethod string
 }
 
+type AlertConfig struct {
+    match string
+    response string
+}
+
 type Config struct {
     iosIfPath    string
     goIosPath    string
@@ -40,6 +45,8 @@ type Config struct {
     vidAppExtBid string
     portRange    string
     bridge       string
+    alerts       []AlertConfig
+    vidAlerts    []AlertConfig
 }
 
 func GetStr( root uj.JNode, path string ) string {
@@ -110,7 +117,25 @@ func NewConfig( configPath string, defaultsPath string, calculatedPath string ) 
     
     config.devs = readDevs( root )
     
+    config.alerts = readAlerts( root, "alerts" )
+    config.vidAlerts = readAlerts( root, "vidStartAlerts" )
+    
     return &config
+}
+
+func readAlerts( root uj.JNode, nodeName string ) []AlertConfig {
+    res := []AlertConfig{}
+    
+    alertNodes := root.Get(nodeName)
+    if alertNodes == nil { return res }
+    
+    alertNodes.ForEach( func( alertNode uj.JNode ) {
+        match := alertNode.Get("match").String()
+        response := alertNode.Get("response").String()
+        res = append( res, AlertConfig{ match, response } )
+    } )
+    
+    return res
 }
 
 func readDevs( root uj.JNode ) ( map[string]CDevice ) {

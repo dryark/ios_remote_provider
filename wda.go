@@ -32,9 +32,9 @@ type WDA struct {
 func NewWDA( config *Config, devTracker *DeviceTracker, dev *Device ) (*WDA) {
     self := NewWDANoStart( config, devTracker, dev )
     if config.wdaMethod != "manual" {
-        self.start()
+        self.start( nil )
     } else {
-        self.startWdaNng( func( err int ) {
+        self.startWdaNng( func( err int, stopChan chan bool ) {
             if err != 0 {
                 dev.EventCh <- DevEvent{ action: DEV_WDA_START_ERR }
             } else {
@@ -151,26 +151,26 @@ func (self *WDA) dialWdaNng() ( mangos.Socket, int, chan bool ) {
     return reqSock, 0, stopChan
 }
 
-func (self *WDA) startWdaNng( onready func( err int ) ) {
+func (self *WDA) startWdaNng( onready func( int, chan bool ) ) {
     pairs := []TunPair{
         TunPair{ from: self.nngPort, to: 8101 },
     }
     
     self.dev.bridge.tunnel( pairs, func() {
-        nngSocket, err, _ := self.dialWdaNng()
+        nngSocket, err, stopChan := self.dialWdaNng()
         if err != 0 {
-            onready( err )
+            onready( err, nil )
             return
         }
         self.nngSocket = nngSocket
         self.create_session("")
         if onready != nil {
-            onready( 0 )            
+            onready( 0, stopChan )            
         }
     } )
 }
 
-func (self *WDA) start() {
+func (self *WDA) start( started func( int, chan bool ) ) {
     pairs := []TunPair{
         TunPair{ from: self.nngPort, to: 8101 },
     }
@@ -189,7 +189,7 @@ func (self *WDA) start() {
                     "port": self.nngPort,
                 } ).Debug("WDA - Dialing NNG")
                 
-                nngSocket, err, _ := self.dialWdaNng()
+                nngSocket, err, stopChan := self.dialWdaNng()
                 if err == 0 {
                     self.nngSocket = nngSocket
                     log.WithFields( log.Fields{
@@ -200,6 +200,10 @@ func (self *WDA) start() {
                     fmt.Printf("Error starting/connecting to WDA.\n")
                     self.dev.EventCh <- DevEvent{ action: DEV_WDA_START_ERR }
                     return
+                }
+                
+                if started != nil {
+                    started( 0, stopChan )
                 }
                 
                 if self.startChan != nil {
@@ -509,6 +513,14 @@ func (self *WDA) Source() string {
     return string(srcBytes)
 }
 
+func (self *WDA) AlertInfo() ( uj.JNode, string ) {
+    self.nngSocket.Send([]byte(`{ action: "alertInfo" }`))
+    jsonBytes, _ := self.nngSocket.Recv()
+    root, _, _ := uj.ParseFull( jsonBytes )
+    if root.Get("present").Bool() == false { return nil, string(jsonBytes) }
+    return root, string(jsonBytes)
+}
+
 func (self *WDA) SourceJson() string {
     self.nngSocket.Send([]byte(`{ action: "sourcej" }`))
     srcBytes, _ := self.nngSocket.Recv()
@@ -520,6 +532,37 @@ func (self *WDA) SourceJson() string {
 func (self *WDA) StartBroadcastStream( appName string, bid string ) {
     sid := self.create_session( bid )
     self.sessionId = sid
+    
+    alerts := self.config.vidAlerts    
+    for {
+        alert, _ := self.AlertInfo()
+        if alert == nil { break }
+        text := alert.Get("alert").String()
+        
+        dismissed := false
+        // dismiss the alert
+        for _, alert := range alerts {
+            if strings.Contains( text, alert.match ) {
+                fmt.Printf("Alert matching \"%s\" appeared. Autoresponding with \"%s\"\n",
+                    alert.match, alert.response )
+                btn := self.ElByName( alert.response )
+                if btn == "" {
+                    fmt.Printf("Alert does not contain button \"%s\"\n", alert.response )
+                } else {
+                    self.ElClick( btn )
+                    dismissed = true
+                    break
+                }
+            }
+        }
+        if !dismissed {
+            // TODO; get rid of the alert some other way
+            break
+        }
+        
+        // Give time for another alert to appear
+        time.Sleep( time.Second * 1 )
+    }
     
     time.Sleep( time.Second * 4 )
     

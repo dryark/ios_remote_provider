@@ -71,7 +71,9 @@ type Device struct {
     bridge          BridgeDev
     backupVideo     *BackupVideo
     backupActive    bool
-    shuttingDown  bool
+    shuttingDown    bool
+    alertMode       bool
+    vidUp           bool
 }
 
 func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev BridgeDev ) (*Device) {
@@ -152,9 +154,9 @@ type DevEvent struct {
 }
 
 func (self *Device) shutdown() {
+    self.shutdownVidStream()
+  
     go func() { self.endProcs() }()
-    
-    go func() { self.shutdownVidStream() }()
     
     go func() { self.EventCh <- DevEvent{ action: DEV_STOP } }()
     go func() { self.BackupCh <- BackupEvent{ action: VID_END } }()
@@ -334,11 +336,42 @@ func (self *Device) startProcs() {
         
         if app == "SpringBoard(SpringBoard)" {
             if strings.Contains( msg, "Presenting <SBUserNotificationAlert" ) {
-                fmt.Printf("Alert appeared\n")
-                self.EventCh <- DevEvent{ action: DEV_ALERT_APPEAR }
+                alerts := self.config.alerts
+                
+                useAlertMode := true
+                if len( alerts ) > 0 {
+                    for _, alert := range alerts {
+                        if strings.Contains( msg, alert.match ) {
+                            fmt.Printf("Alert matching \"%s\" appeared. Autoresponding with \"%s\"\n",
+                                alert.match, alert.response )
+                            if self.wdaRunning {
+                                useAlertMode = false
+                                btn := self.wda.ElByName( alert.response )
+                                if btn == "" {
+                                    fmt.Printf("Alert does not contain button \"%s\"\n", alert.response )
+                                } else {
+                                    self.wda.ElClick( btn )
+                                }
+                            }
+                            
+                        }
+                    }
+                }
+                
+                if useAlertMode && self.vidUp { 
+                    fmt.Printf("Alert appeared\n")
+                    if len( alerts ) > 0 {
+                        fmt.Printf("Alert did not match any autoresponses; Msg content: %s\n", msg )
+                    }
+                    self.EventCh <- DevEvent{ action: DEV_ALERT_APPEAR }
+                    self.alertMode = true
+                }
             } else if strings.Contains( msg, "deactivate alertItem: <SBUserNotificationAlert" ) {
-                fmt.Printf("Alert went away\n")
-                self.EventCh <- DevEvent{ action: DEV_ALERT_GONE }
+                if self.alertMode {
+                    self.alertMode = false
+                    fmt.Printf("Alert went away\n")
+                    self.EventCh <- DevEvent{ action: DEV_ALERT_GONE }
+                }
             }
         } else if app == "SpringBoard(FrontBoard)" {
             if strings.Contains( msg, "Setting process visibility to: Foreground" ) {
@@ -376,10 +409,22 @@ func (self *Device) startProcs2() {
 func (self *Device) enableVideo() {
     // check if video app is running
     vidPid := self.bridge.GetPid( self.config.vidAppExtBid )
+    
     // if it is running, go ahead and use it
-    if vidPid != 0 {
+    /*if vidPid != 0 {
         self.vidMode = VID_APP
         return
+    }*/
+    
+    // If it is running, kill it
+    if vidPid != 0 {
+        self.bridge.Kill( vidPid )
+        
+        // Kill off replayd in case it is stuck
+        rp_id := self.bridge.GetPid("replayd")
+        if rp_id != 0 {
+            self.bridge.Kill( rp_id )
+        }
     }
     
     // if video app is not running, check if it is installed
@@ -398,6 +443,7 @@ func (self *Device) enableVideo() {
         }
       
         self.wda.StartBroadcastStream( self.config.vidAppName, bid )
+        self.vidUp = true
         self.vidMode = VID_APP
         return
     }
@@ -455,6 +501,10 @@ func (self *Device) startVidStream() { // conn *ws.Conn ) {
 func (self *Device) shutdownVidStream() {
     if self.vidOut != nil {
         self.stopVidStream()
+    }
+    ext_id := self.bridge.GetPid("vidstream_ext")
+    if ext_id != 0 {
+        self.bridge.Kill( ext_id )
     }
 }
 

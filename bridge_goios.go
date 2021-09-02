@@ -173,7 +173,7 @@ func (self *GIDev) tunnelOne( pair TunPair, onready func() ) {
         }
         fmt.Printf( "tunnel start:%s\n", line )
       } else {
-        fmt.Printf( "tunnel err:%s\n", line )
+        //fmt.Printf( "tunnel err:%s\n", line )
       }
     },
     onStop: func( interface{} ) {
@@ -194,7 +194,7 @@ func (self *GIBridge) GetDevs( config *Config ) []string {
   return res
 }
 
-func (self *GIDev) GetPid( appname string ) int {
+func (self *GIDev) GetPid( appname string ) uint64 {
     json, err := exec.Command( self.bridge.cli,
         []string{
             "ps",
@@ -202,7 +202,7 @@ func (self *GIDev) GetPid( appname string ) int {
         }... ).Output()
       
     if err != nil {
-        fmt.Printf("Could not find pid for %s\n", appname )
+        fmt.Printf("Could not find pid for %s; err=%s, json=%s\n", appname, err, json )
         return 0
     }
     
@@ -216,7 +216,18 @@ func (self *GIDev) GetPid( appname string ) int {
     } )
     
     fmt.Printf("Found pid %d for %s\n", pid, appname )
-    return pid
+    return uint64( pid )
+}
+
+func (self *GIDev) Kill( pid uint64 ) {
+    fmt.Printf("Killing process id %d\n", pid )
+    
+    exec.Command( self.bridge.cli,
+        []string{
+            "killid", fmt.Sprintf("%d", pid ),
+            "--udid", self.udid,
+        }...
+    ).Output()
 }
 
 func (self *GIDev) AppInfo( bundleId string ) uj.JNode {
