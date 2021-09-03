@@ -35,6 +35,7 @@ type ControlFloor struct {
     DevTracker *DeviceTracker
     vidConns   map[string] *ws.Conn
     selfSigned bool
+    delayed    bool
 }
 
 func NewControlFloor( config *Config ) (*ControlFloor, chan bool) {
@@ -67,6 +68,7 @@ func NewControlFloor( config *Config ) (*ControlFloor, chan bool) {
         pass: pass,
         lock: &sync.Mutex{},
         vidConns: make( map[string] *ws.Conn ),
+        delayed: false
     }
     if config.https {
         self.base = "https://" + config.cfHost
@@ -88,7 +90,6 @@ func NewControlFloor( config *Config ) (*ControlFloor, chan bool) {
     
     go func() {
         exit := false
-        delayed := false
         for {
             select {
               case <- stopCf:
@@ -108,11 +109,11 @@ func NewControlFloor( config *Config ) (*ControlFloor, chan bool) {
                 fmt.Println("Waiting 10 seconds to retry...")
                 time.Sleep( time.Second * 10 )
                 fmt.Println("trying again\n")
-                delayed = true
+                self.delayed = true
                 continue
             }
             
-            if delayed {
+            if self.delayed {
                 self.DevTracker.cfReady()
             }
             
