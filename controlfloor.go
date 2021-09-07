@@ -297,6 +297,16 @@ func ( self *ControlFloor ) openWebsocket() {
                         }
                         respondChan <- &CFR_Pong{ id: id, text: "done" }
                     } ()
+                } else if mType == "iohid" {
+                    udid := root.Get("udid").String()
+                    go func() {
+                        dev := self.DevTracker.getDevice( udid )
+                        if dev != nil {
+                            page := root.Get("page").Int()
+                            code := root.Get("code").Int()
+                            dev.iohid( page, code )
+                        }
+                    } ()
                 } else if mType == "swipe" {
                     udid := root.Get("udid").String()
                     x1 := root.Get("x1").Int()

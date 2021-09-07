@@ -20,7 +20,12 @@ func main() {
         uc.OPT("-calculated","Path to calculated JSON values",0),
     }
     
+    idOpt := uc.OPTS{
+        uc.OPT("-id","Udid of device",0),
+    }
+    
     runOpts := append( commonOpts,
+        idOpt[0],
         uc.OPT("-nosanity","Skip sanity checks",uc.FLAG),
     )
     
@@ -28,28 +33,19 @@ func main() {
     uclop.AddCmd( "register", "Register against ControlFloor", runRegister, commonOpts )
     uclop.AddCmd( "cleanup", "Cleanup leftover processes", runCleanup, nil )
 
-    wdaOpts := uc.OPTS{
-        uc.OPT("-id","Udid of device",0),
-    }
-    uclop.AddCmd( "wda", "Just run WDA", runWDA, wdaOpts )
+    uclop.AddCmd( "wda",       "Just run WDA",                     runWDA,        idOpt )
+    uclop.AddCmd( "winsize",   "Get device window size",           runWindowSize, idOpt )
+    uclop.AddCmd( "source",    "Get device xml source",            runSource,     idOpt )
+    uclop.AddCmd( "alertinfo", "Get alert info",                   runAlertInfo,  idOpt )
+    uclop.AddCmd( "islocked",  "Check if device screen is locked", runIsLocked,   idOpt )
+    uclop.AddCmd( "unlock",    "Unlock device screen",             runUnlock,     idOpt )
     
-    windowSizeOpts := uc.OPTS{
-        uc.OPT("-id","Udid of device",0),
-    }
-    uclop.AddCmd( "winsize", "Get device window size", runWindowSize, windowSizeOpts )
-    uclop.AddCmd( "source", "Get device xml source", runSource, windowSizeOpts )
-    uclop.AddCmd( "alertinfo", "Get alert info", runAlertInfo, windowSizeOpts )
-    
-    clickButtonOpts := uc.OPTS{
-        uc.OPT("-id","Udid of device",0),
+    clickButtonOpts := append( idOpt,
         uc.OPT("-label","Button label",uc.REQ),
-    }
+    )
     uclop.AddCmd( "clickEl", "Click a named element", runClickEl, clickButtonOpts )
     
-    vidTestOpts := uc.OPTS{
-        uc.OPT("-id","Udid of device",0),
-    }
-    uclop.AddCmd( "vidtest", "Test backup video", runVidTest, vidTestOpts ) 
+    uclop.AddCmd( "vidtest", "Test backup video", runVidTest, idOpt ) 
     
     uclop.Run()
 }
@@ -57,7 +53,7 @@ func main() {
 func wdaForDev( id string ) (*WDA,*DeviceTracker,*Device) {
     config := NewConfig( "config.json", "default.json", "calculated.json" )
     
-    tracker := NewDeviceTracker( config, false )
+    tracker := NewDeviceTracker( config, false, "" )
     
     devs := tracker.bridge.GetDevs( config )
     dev1 := id
@@ -83,7 +79,7 @@ func wdaForDev( id string ) (*WDA,*DeviceTracker,*Device) {
 func vidTestForDev( id string ) (*DeviceTracker) {
     config := NewConfig( "config.json", "default.json", "calculated.json" )
     
-    tracker := NewDeviceTracker( config, false )
+    tracker := NewDeviceTracker( config, false, "" )
     
     devs := tracker.bridge.GetDevs( config )
     dev1 := id
@@ -244,6 +240,27 @@ func runAlertInfo( cmd *uc.Cmd ) {
     } )
 }
 
+func runIsLocked( cmd *uc.Cmd ) {
+    wdaWrapped( cmd, func( wda *WDA ) {
+        locked := wda.IsLocked()
+        if locked {
+            fmt.Println("Device screen is locked")
+        } else {
+            fmt.Println("Device screen is unlocked")
+        }
+    } )
+}
+
+func runUnlock( cmd *uc.Cmd ) {
+    wdaWrapped( cmd, func( wda *WDA ) {
+        //wda.Unlock()
+        wda.ioHid( 0x0c, 0x30 ) // power
+        //time.Sleep(time.Second)
+        //wda.ioHid( 0x07, 0x4a ) // home keyboard button
+        wda.Unlock()
+    } )
+}
+
 func common( cmd *uc.Cmd ) *Config {
     debug := cmd.Get("-debug").Bool()
     warn  := cmd.Get("-warn").Bool()
@@ -284,7 +301,13 @@ func runMain( cmd *uc.Cmd ) {
         if !sane { return }
     }
     
-    devTracker := NewDeviceTracker( config, true )
+    id := ""
+    idNode := cmd.Get("-id")
+    if idNode != nil {
+      id = idNode.String()
+    }
+    
+    devTracker := NewDeviceTracker( config, true, id )
     coro_sigterm( config, devTracker )
     
     coroHttpServer( devTracker )

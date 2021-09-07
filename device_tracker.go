@@ -13,21 +13,22 @@ type Event struct {
 }
 
 type DeviceTracker struct {
-    Config     *Config
-    DevMap     map [string] *Device
-    freePorts  []int
-    portMin    int
-    portMax    int
-    process    map[string] *GenericProc
-    lock       *sync.Mutex
-    cf         *ControlFloor
-    cfStop     chan bool
-    bridge     BridgeRoot
-    pendingDevs [] BridgeDev
+    Config       *Config
+    DevMap       map [string] *Device
+    freePorts    []int
+    portMin      int
+    portMax      int
+    process      map[string] *GenericProc
+    lock         *sync.Mutex
+    cf           *ControlFloor
+    cfStop       chan bool
+    bridge       BridgeRoot
+    pendingDevs  [] BridgeDev
     shuttingDown bool
+    singleId     string
 }
 
-func NewDeviceTracker( config *Config, detect bool ) (*DeviceTracker) {
+func NewDeviceTracker( config *Config, detect bool, singleId string ) (*DeviceTracker) {
     var cf *ControlFloor
     var cfStop chan bool
     if detect {
@@ -37,16 +38,13 @@ func NewDeviceTracker( config *Config, detect bool ) (*DeviceTracker) {
         process: make( map[string] *GenericProc ),
         lock: &sync.Mutex{},
         DevMap: make( map [string] *Device ),
-        //EventCh: make( chan Event ),
         Config: config,
         portMin: 8101,
         portMax: 8200,
         freePorts: []int{},
-        //localPorts: []int{
-        //    8102, 8103, 8104, 8105, 8106, 8107, 8108, 8109, 8110, 8111, 8112, 8113, 8114, 8115, 8116,
-        //},
         cf: cf,
         cfStop: cfStop,
+        singleId: singleId,
     }
     
     bridgeCreator := NewIIFBridge
@@ -89,7 +87,6 @@ func ( self *DeviceTracker ) stopProc( procName string ) {
 func (self *DeviceTracker) getPort() (int) {
     var port int
     self.lock.Lock()
-    //port, self.localPorts = self.localPorts[0], self.localPorts[1:]
     if len( self.freePorts ) > 0 {
       port = self.freePorts[0]
       self.freePorts = self.freePorts[1:]
@@ -122,6 +119,10 @@ func (self *DeviceTracker) cfReady() {
 
 func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
     udid := bdev.getUdid()
+    
+    if self.singleId != "" && udid != self.singleId {
+        return nil
+    }
     
     if !self.cf.ready {
         self.pendingDevs = append( self.pendingDevs, bdev )

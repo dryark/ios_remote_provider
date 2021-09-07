@@ -94,7 +94,8 @@ func (self *GIBridge) OnConnect( udid string, name string, plog *log.Entry ) {
 }
 
 func (self *GIBridge) OnDisconnect( udid string, plog *log.Entry ) {
-  dev := self.devs[ udid ]
+  dev, tracked := self.devs[ udid ]
+  if !tracked { return }
   dev.destroy()
   self.onDisconnect( dev )
   delete( self.devs, udid )

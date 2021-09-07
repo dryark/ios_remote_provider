@@ -555,6 +555,10 @@ func (self *Device) home() {
     self.wda.home()
 }
 
+func (self *Device) iohid( page int, code int ) {
+    self.wda.ioHid( page, code )
+}
+
 func (self *Device) swipe( x1 int, y1 int, x2 int, y2 int, delayBy100 int ) {
     delay := float64( delayBy100 ) / 100.0
     self.wda.swipe( x1, y1, x2, y2, delay )

@@ -528,6 +528,18 @@ func (self *WDA) SourceJson() string {
     return string(srcBytes)
 }
 
+func (self *WDA) IsLocked() bool {
+    self.nngSocket.Send([]byte(`{ action: "isLocked" }`))
+    jsonBytes, _ := self.nngSocket.Recv()
+    root, _, _ := uj.ParseFull( jsonBytes )
+    return root.Get("locked").Bool()
+}
+
+func (self *WDA) Unlock () {
+    self.nngSocket.Send([]byte(`{ action: "unlock" }`))
+    res, _ := self.nngSocket.Recv()
+    fmt.Printf("Result:%s\n", string( res ) )
+}
 
 func (self *WDA) StartBroadcastStream( appName string, bid string ) {
     sid := self.create_session( bid )
