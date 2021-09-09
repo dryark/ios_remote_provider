@@ -103,9 +103,12 @@ func ( self *ImgHandler ) processImgMsg() (int) {
         
         if lenLeft < 10 {
             // it's just a text message
-            msg := root.Get("msg").String()
-            if msg == "noframes" {
-                self.imgConsumer.noframes()
+            msgNode := root.Get("msg")
+            if msgNode != nil {
+                msg := msgNode.String()
+                if msg == "noframes" {
+                    self.imgConsumer.noframes()
+                }
             }
             return 0
         }

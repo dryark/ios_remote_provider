@@ -470,8 +470,8 @@ func (self *WDA) ElLongTouch( elId string ) {
     log.Info( "elTouchAndHold", elId )
     json := fmt.Sprintf( `{
         action: "elTouchAndHold"
-        element: "%s"
-        duration: 2
+        id: "%s"
+        time: 2.0
     }`, elId )
     
     self.nngSocket.Send([]byte(json))
@@ -516,6 +516,7 @@ func (self *WDA) Source() string {
 func (self *WDA) AlertInfo() ( uj.JNode, string ) {
     self.nngSocket.Send([]byte(`{ action: "alertInfo" }`))
     jsonBytes, _ := self.nngSocket.Recv()
+    fmt.Printf("alertInfo res: %s\n", string(jsonBytes) )
     root, _, _ := uj.ParseFull( jsonBytes )
     if root.Get("present").Bool() == false { return nil, string(jsonBytes) }
     return root, string(jsonBytes)
@@ -541,11 +542,29 @@ func (self *WDA) Unlock () {
     fmt.Printf("Result:%s\n", string( res ) )
 }
 
-func (self *WDA) StartBroadcastStream( appName string, bid string ) {
+func (self *WDA) OpenControlCenter( controlCenterMethod string ) {
+    fmt.Printf("Opening control center\n")  
+    width, height := self.WindowSize()
+    
+    if controlCenterMethod == "bottomUp" {
+        midx := width / 2
+        maxy := height - 1
+        self.swipe( midx, maxy, midx, maxy - 100, 0.1 )
+    } else if controlCenterMethod == "topDown" {
+        maxx := width - 1
+        self.swipe( maxx, 0, maxx, 100, 0.1 )
+    }    
+}
+
+func (self *WDA) StartBroadcastStream( appName string, bid string, devConfig *CDevice ) {
+    method := devConfig.vidStartMethod
+    ccMethod := devConfig.controlCenterMethod
+    
     sid := self.create_session( bid )
     self.sessionId = sid
     
-    alerts := self.config.vidAlerts    
+    fmt.Printf("Checking for alerts\n")
+    alerts := self.config.vidAlerts
     for {
         alert, _ := self.AlertInfo()
         if alert == nil { break }
@@ -578,15 +597,40 @@ func (self *WDA) StartBroadcastStream( appName string, bid string ) {
     
     time.Sleep( time.Second * 4 )
     
-    toSelector := self.ElByName( "Broadcast Selector" )
-    self.ElClick( toSelector )
-    
-    time.Sleep( time.Second * 2 )
-    //self.Source()
-    
-    startBtn := self.ElByName( "Start Broadcast" )
-    self.ElClick( startBtn )
-    
+    fmt.Printf("vidApp start method: %s\n", method )
+    if method == "app" {
+        fmt.Printf("Starting vidApp through the app\n")
+        
+        toSelector := self.ElByName( "Broadcast Selector" )
+        self.ElClick( toSelector )
+        
+        time.Sleep( time.Second * 2 )
+        //self.Source()
+        
+        startBtn := self.ElByName( "Start Broadcast" )
+        self.ElClick( startBtn )
+    } else if method == "controlCenter" {
+        fmt.Printf("Starting vidApp through control center\n")
+        self.OpenControlCenter( ccMethod )
+        time.Sleep( time.Second * 2 )
+        //self.Source()
+        
+        devEl := self.ElByName( "Screen Recording" )
+        fmt.Printf("Selecting Screen Recording; el=%s\n", devEl )
+        self.ElLongTouch( devEl )
+        time.Sleep( time.Second * 2 )
+        
+        appEl := self.ElByName( appName )
+        self.ElClick( appEl )
+        time.Sleep( time.Second )
+        
+        startBtn := self.ElByName( "Start Broadcast" )
+        self.ElClick( startBtn )
+        
+        time.Sleep( time.Second * 3 )
+    } else if method == "manual" {
+    }
+        
     time.Sleep( time.Second * 5 )
 }
 

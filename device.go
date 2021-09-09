@@ -442,7 +442,7 @@ func (self *Device) enableVideo() {
             panic("Wrong vidstream version")
         }
       
-        self.wda.StartBroadcastStream( self.config.vidAppName, bid )
+        self.wda.StartBroadcastStream( self.config.vidAppName, bid, self.devConfig )
         self.vidUp = true
         self.vidMode = VID_APP
         return
@@ -454,7 +454,7 @@ func (self *Device) enableVideo() {
     // install it, then start it
     success := self.bridge.InstallApp( "vidstream.xcarchive/Products/Applications/vidstream.app" )
     if success {
-        self.wda.StartBroadcastStream( self.config.vidAppName, bid )
+        self.wda.StartBroadcastStream( self.config.vidAppName, bid, self.devConfig )
         self.vidMode = VID_APP
         return
     }

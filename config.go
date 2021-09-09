@@ -11,11 +11,12 @@ import (
 )
 
 type CDevice struct {
-    udid string
-    uiWidth int
+    udid     string
+    uiWidth  int
     uiHeight int
-    wdaPort int
-    //controlCenterMethod string
+    wdaPort  int
+    vidStartMethod string
+    controlCenterMethod string
 }
 
 type AlertConfig struct {
@@ -148,30 +149,36 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
             uiWidth := 0
             uiHeight := 0
             wdaPort := 0
-            //controlCenterMethod := "bottomUp"
+            controlCenterMethod := "bottomUp"
+            vidStartMethod := "app"
             widthNode := devNode.Get("uiWidth")
             if widthNode != nil {
-              uiWidth = widthNode.Int()
+                uiWidth = widthNode.Int()
             }
             heightNode := devNode.Get("uiHeight")
             if heightNode != nil {
-              uiHeight = heightNode.Int()
+                uiHeight = heightNode.Int()
             }
             wdaPortNode := devNode.Get("wdaPort")
             if wdaPortNode != nil {
-              wdaPort = wdaPortNode.Int()
+                wdaPort = wdaPortNode.Int()
             }
-            //methodNode := devNode.Get("controlCenterMethod")
-            //if methodNode != nil {
-            //  controlCenterMethod = methodNode.String()
-            //}
+            methodNode := devNode.Get("controlCenterMethod")
+            if methodNode != nil {
+                controlCenterMethod = methodNode.String()
+            }
+            vidStartMethodNode := devNode.Get("vidStartMethod")
+            if vidStartMethodNode != nil {
+                vidStartMethod = vidStartMethodNode.String()
+            }
             
             dev := CDevice{
-                udid: udid,
-                uiWidth: uiWidth,
-                uiHeight: uiHeight,
-                wdaPort: wdaPort,
-                //controlCenterMethod: controlCenterMethod,
+                udid,
+                uiWidth,
+                uiHeight,
+                wdaPort,
+                vidStartMethod,
+                controlCenterMethod,
             }
             devs[ udid ] = dev
         } )
