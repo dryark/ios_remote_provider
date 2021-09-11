@@ -1,7 +1,7 @@
 package main
 
 import (
-	  //"fmt"
+    "fmt"
     "os"
     "os/exec"
     "os/signal"
@@ -109,6 +109,10 @@ func cleanup_procs( config *Config ) {
         }
     }
     
+    if config.singleId != "" {
+        fmt.Printf("Running in singleId mode; killing procs with id %s\n", config.singleId )
+    }
+    
     // Death to all tidevice processes! *rage*
     for _,proc := range procs {
         if strings.Contains( proc.cmd, "tidevice" ) ||
@@ -143,20 +147,18 @@ func cleanup_procs( config *Config ) {
                         doKill = true
                     }
                 }
-                if doKill == true {
-                    syscall.Kill( pid, syscall.SIGTERM )
-                    hangingPids = append( hangingPids, pid ) 
-                }
             } else {
-                syscall.Kill( pid, syscall.SIGTERM )
-                hangingPids = append( hangingPids, pid )
                 doKill = true
             }
             
             if doKill == true {
+                syscall.Kill( pid, syscall.SIGTERM )
+                hangingPids = append( hangingPids, pid ) 
+           
                 plog.WithFields( log.Fields{
                     "proc": "go-ios",
                     "pid":  pid,
+                    "args": proc.args,
                 } ).Warn("Leftover go-ios - Sending SIGTERM")
             }
         }
