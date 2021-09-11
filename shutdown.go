@@ -130,11 +130,7 @@ func cleanup_procs( config *Config ) {
         }
         if strings.Contains( proc.cmd, "go-ios" ) {
             pid := proc.pid //proc.PID()
-            plog.WithFields( log.Fields{
-                "proc": "go-ios",
-                "pid":  pid,
-            } ).Warn("Leftover go-ios - Sending SIGTERM")
-            
+            doKill := false        
             /*
             If using a singleId ( udid specified on CLI ), then we don't want to get rid of all
             go-ios procs, only the ones associated with that ID. This could potentially leave
@@ -142,19 +138,26 @@ func cleanup_procs( config *Config ) {
             by the above standard code of already tracked procs.
             */
             if config.singleId != "" {
-                hasUdid := false
                 for _, arg := range( proc.args ) {
                     if strings.Contains( arg, config.singleId ) {
-                        hasUdid = true
+                        doKill = true
                     }
                 }
-                if hasUdid == true {
+                if doKill == true {
                     syscall.Kill( pid, syscall.SIGTERM )
                     hangingPids = append( hangingPids, pid ) 
                 }
             } else {
                 syscall.Kill( pid, syscall.SIGTERM )
-                hangingPids = append( hangingPids, pid ) 
+                hangingPids = append( hangingPids, pid )
+                doKill = true
+            }
+            
+            if doKill == true {
+                plog.WithFields( log.Fields{
+                    "proc": "go-ios",
+                    "pid":  pid,
+                } ).Warn("Leftover go-ios - Sending SIGTERM")
             }
         }
     }

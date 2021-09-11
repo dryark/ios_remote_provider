@@ -518,8 +518,14 @@ func (self *WDA) AlertInfo() ( uj.JNode, string ) {
     jsonBytes, _ := self.nngSocket.Recv()
     fmt.Printf("alertInfo res: %s\n", string(jsonBytes) )
     root, _, _ := uj.ParseFull( jsonBytes )
-    if root.Get("present").Bool() == false { return nil, string(jsonBytes) }
-    return root, string(jsonBytes)
+    presentNode := root.Get("present")
+    if presentNode == nil {
+        fmt.Printf("Error reading alertInfo; got back %s\n", string(jsonBytes) )
+        return nil, string(jsonBytes)
+    } else {
+        if presentNode.Bool() == false { return nil, string(jsonBytes) }
+        return root, string(jsonBytes)
+    }
 }
 
 func (self *WDA) SourceJson() string {
