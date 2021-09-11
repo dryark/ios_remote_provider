@@ -305,6 +305,7 @@ func runMain( cmd *uc.Cmd ) {
     idNode := cmd.Get("-id")
     if idNode != nil {
       id = idNode.String()
+      config.singleId = id
     }
     
     devTracker := NewDeviceTracker( config, true, id )
