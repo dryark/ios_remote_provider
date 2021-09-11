@@ -292,20 +292,20 @@ func runRegister( cmd *uc.Cmd ) {
 
 func runMain( cmd *uc.Cmd ) {
     config := common( cmd )
-        
-    cleanup_procs( config )
-    
-    nosanity := cmd.Get("-nosanity").Bool()
-    if !nosanity {
-        sane := sanityChecks( config, cmd )
-        if !sane { return }
-    }
     
     id := ""
     idNode := cmd.Get("-id")
     if idNode != nil {
       id = idNode.String()
       config.singleId = id
+    }
+    
+    cleanup_procs( config )
+    
+    nosanity := cmd.Get("-nosanity").Bool()
+    if !nosanity {
+        sane := sanityChecks( config, cmd )
+        if !sane { return }
     }
     
     devTracker := NewDeviceTracker( config, true, id )
