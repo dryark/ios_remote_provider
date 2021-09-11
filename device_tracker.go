@@ -2,6 +2,8 @@ package main
 
 import (
     "fmt"
+    "strconv"
+    "strings"
     "sync"
     log "github.com/sirupsen/logrus"
     uj "github.com/nanoscopic/ujsonin/v2/mod"
@@ -34,13 +36,19 @@ func NewDeviceTracker( config *Config, detect bool, singleId string ) (*DeviceTr
     if detect {
       cf, cfStop = NewControlFloor( config )
     }
+    
+    portRange := config.portRange
+    parts := strings.Split(portRange,"-")
+    portMin, _ := strconv.Atoi( parts[0] )
+    portMax, _ := strconv.Atoi( parts[1] )
+    
     self := &DeviceTracker{
         process: make( map[string] *GenericProc ),
         lock: &sync.Mutex{},
         DevMap: make( map [string] *Device ),
         Config: config,
-        portMin: 8101,
-        portMax: 8200,
+        portMin: portMin,
+        portMax: portMax,
         freePorts: []int{},
         cf: cf,
         cfStop: cfStop,
