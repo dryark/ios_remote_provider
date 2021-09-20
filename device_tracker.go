@@ -132,11 +132,13 @@ func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
     udid := bdev.getUdid()
     
     if len( self.idList ) > 0 {
+        devFound := false
         for _,oneId := range( self.idList ) {
             if oneId == udid {
-                return nil
+                devFound = true
             }
         }
+        if !devFound { return nil }
     }
     
     if !self.cf.ready {
