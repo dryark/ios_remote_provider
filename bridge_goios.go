@@ -1,198 +1,228 @@
 package main
 
 import (
-  "fmt"
-  "os"
-  "os/exec"
-  "regexp"
-  "strconv"
-  "strings"
-  log "github.com/sirupsen/logrus"
-  uj "github.com/nanoscopic/ujsonin/v2/mod"
+    "fmt"
+    "os"
+    "os/exec"
+    "regexp"
+    "strconv"
+    "strings"
+    "time"
+    log "github.com/sirupsen/logrus"
+    uj "github.com/nanoscopic/ujsonin/v2/mod"
+    "github.com/danielpaulus/go-ios/ios"
 )
 
 type GIBridge struct {
-  onConnect    func( dev BridgeDev ) ProcTracker
-  onDisconnect func( dev BridgeDev )
-  cli          string
-  devs         map[string]*GIDev
-  procTracker  ProcTracker
-  config       *Config
+    onConnect    func( dev BridgeDev ) ProcTracker
+    onDisconnect func( dev BridgeDev )
+    cli          string
+    devs         map[string]*GIDev
+    procTracker  ProcTracker
+    config       *Config
 }
 
 type GIDev struct {
-  bridge      *GIBridge
-  udid        string
-  name        string
-  procTracker ProcTracker
-  config      *CDevice
+    bridge      *GIBridge
+    udid        string
+    name        string
+    procTracker ProcTracker
+    config      *CDevice
 }
 
 func NewGIBridge( config *Config, OnConnect func( dev BridgeDev ) (ProcTracker), OnDisconnect func( dev BridgeDev ), goIosPath string, procTracker ProcTracker, detect bool ) BridgeRoot {
-  self := &GIBridge{
-    onConnect:    OnConnect,
-    onDisconnect: OnDisconnect,
-    cli:          goIosPath,
-    devs:         make( map[string]*GIDev ),
-    procTracker:  procTracker,
-    config:       config,
-  }
-  if detect { self.startDetect() }
-  return self
+    self := &GIBridge{
+        onConnect:    OnConnect,
+        onDisconnect: OnDisconnect,
+        cli:          goIosPath,
+        devs:         make( map[string]*GIDev ),
+        procTracker:  procTracker,
+        config:       config,
+    }
+    if detect { self.startDetect() }
+    return self
 }
 
 func (self *GIDev) getUdid() string {
-  return self.udid
+    return self.udid
+}
+
+func listenForDevices( stopChan chan bool, onConnect func( string ), onDisconnect func( string ) ) {
+    go func() {
+        exit := false
+        for {
+            deviceConn, err := ios.NewDeviceConnection(ios.DefaultUsbmuxdSocket)
+            defer deviceConn.Close()
+            if err != nil {
+                log.Errorf("could not connect to %s with err %+v, will retry in 3 seconds...", ios.DefaultUsbmuxdSocket, err)
+                time.Sleep(time.Second * 3)
+                continue
+            }
+            muxConnection := ios.NewUsbMuxConnection(deviceConn)
+            
+            attachedReceiver, err := muxConnection.Listen()
+            if err != nil {
+                log.Error("Failed issuing Listen command, will retry in 3 seconds", err)
+                deviceConn.Close()
+                time.Sleep(time.Second * 3)
+                continue
+            }
+            for {
+                select {
+                    case <- stopChan:
+                        exit = true
+                        break
+                    default:
+                }
+                if exit { break }
+              
+                msg, err := attachedReceiver()
+                if err != nil {
+                    log.Error("Stopped listening because of error")
+                    break
+                }
+                
+                if msg.MessageType == "Attached" {
+                    onConnect( msg.Properties.SerialNumber )
+                } else if msg.MessageType == "Detached" {
+                    onDisconnect( msg.Properties.SerialNumber )
+                }
+            }
+            if exit { break }
+        }
+    }()
 }
 
 func (self *GIBridge) startDetect() {
-  o := ProcOptions{
-    procName: "device_trigger",
-    binary: self.cli,
-    args: []string{ "listen" },
-    stderrHandler: func( line string, plog *log.Entry ) {
-    },
-    stdoutHandler: func( line string, plog *log.Entry ) {
-      if strings.HasPrefix( line, "{" ) {
-        root, _ := uj.Parse( []byte(line) )
-        evType := root.Get("MessageType").String()
-        udid := root.Get("Properties.SerialNumber").String()
-        if evType == "Attached" {
-          //name := root.Get("Properties.Name").String()
-          name := "fake name"
-          self.OnConnect( udid, name, plog )
-        } else if evType == "Detached" {
-          self.OnDisconnect( udid, plog )
-        }
-      }
-    },
-    onStop: func( interface{} ) {
-      log.Println("device trigger stopped")
-    },
-  }
-  proc_generic( self.procTracker, nil, &o )
+    stopChan := make( chan bool )
+    listenForDevices( stopChan,
+        func( id string ) {
+            self.OnConnect( id, "fake name", nil )
+        },
+        func( id string ) {
+            self.OnDisconnect( id, nil )
+        })
 }
 
 func (self *GIBridge) list() []BridgeDevInfo {
-  infos := []BridgeDevInfo{}
-  for _,dev := range self.devs {
-    infos = append( infos, BridgeDevInfo{ udid: dev.udid } )
-  }
-  return infos
+    infos := []BridgeDevInfo{}
+    for _,dev := range self.devs {
+        infos = append( infos, BridgeDevInfo{ udid: dev.udid } )
+    }
+    return infos
 }
 
 func (self *GIBridge) OnConnect( udid string, name string, plog *log.Entry ) {
-  dev := NewGIDev( self, udid, name )
-  self.devs[ udid ] = dev
-  
-  devConfig, hasDevConfig := self.config.devs[ udid ]
-  if hasDevConfig {
-    dev.config = &devConfig
-  }
-  
-  dev.procTracker = self.onConnect( dev )
+    dev := NewGIDev( self, udid, name )
+    self.devs[ udid ] = dev
+    
+    devConfig, hasDevConfig := self.config.devs[ udid ]
+    if hasDevConfig {
+        dev.config = &devConfig
+    }
+    
+    dev.procTracker = self.onConnect( dev )
 }
 
 func (self *GIBridge) OnDisconnect( udid string, plog *log.Entry ) {
-  dev, tracked := self.devs[ udid ]
-  if !tracked { return }
-  dev.destroy()
-  self.onDisconnect( dev )
-  delete( self.devs, udid )
+    dev, tracked := self.devs[ udid ]
+    if !tracked { return }
+    dev.destroy()
+    self.onDisconnect( dev )
+    delete( self.devs, udid )
 }
 
 func (self *GIBridge) destroy() {
-  for _,dev := range self.devs {
-    dev.destroy()
-  }
-  // close self processes
+    for _,dev := range self.devs {
+        dev.destroy()
+    }
+    // close self processes
 }
 
 func NewGIDev( bridge *GIBridge, udid string, name string ) (*GIDev) {
-  log.WithFields( log.Fields{
-      "type": "gidev_create",
-      "udid": censorUuid( udid ),
-  } ).Debug( "Creating GIDev" )
-  
-  var procTracker ProcTracker = nil
-  return &GIDev{
-    bridge: bridge,
-    name: name,
-    udid: udid,
-    procTracker: procTracker,
-  }
+    log.WithFields( log.Fields{
+        "type": "gidev_create",
+        "udid": censorUuid( udid ),
+    } ).Debug( "Creating GIDev" )
+    
+    var procTracker ProcTracker = nil
+    return &GIDev{
+        bridge: bridge,
+        name: name,
+        udid: udid,
+        procTracker: procTracker,
+    }
 }
 
 func (self *GIDev) setProcTracker( procTracker ProcTracker ) {
-  self.procTracker = procTracker
+    self.procTracker = procTracker
 }
 
 func (self *GIDev) tunnel( pairs []TunPair, onready func() ) {
-  count := len( pairs )
-  sofar := 0
-  done := make( chan bool )
-  for _,pair := range( pairs ) {
-    self.tunnelOne( pair, func() {
-      sofar++
-      if sofar == count {
-        done <- true
-      }
-    } )
-  }
-  <- done
-  onready()
+    count := len( pairs )
+    sofar := 0
+    done := make( chan bool )
+    for _,pair := range( pairs ) {
+        self.tunnelOne( pair, func() {
+            sofar++
+            if sofar == count {
+                done <- true
+            }
+        } )
+    }
+    <- done
+    onready()
 }
 
 func (self *GIDev) tunnelOne( pair TunPair, onready func() ) {
-  tunName := "tunnel"
-  specs := []string{}
-  
-  tunName = fmt.Sprintf( "%s_%d->%d", tunName, pair.from, pair.to )
-  specs = append( specs, fmt.Sprintf("%d",pair.from) )
-  specs = append( specs, fmt.Sprintf("%d",pair.to) )
-  
-  args := []string {
-    "forward",
-    "--udid", self.udid,
-  }
-  args = append( args, specs... )
-  fmt.Printf("Starting %s with %s\n", self.bridge.cli, args )
-  
-  o := ProcOptions{
-    procName: tunName,
-    binary: self.bridge.cli,
-    args: args,
-    stdoutHandler: func( line string, plog *log.Entry ) {
-      fmt.Println( "tunnel:%s", line )
-    },
-    stderrHandler: func( line string, plog *log.Entry ) {
-      
-      //fmt.Println( "tunnel:%s", line )
-      if strings.Contains( line, "Start" ) {
-        if onready != nil {
-          onready()
-        }
-        fmt.Printf( "tunnel start:%s\n", line )
-      } else {
-        //fmt.Printf( "tunnel err:%s\n", line )
-      }
-    },
-    onStop: func( interface{} ) {
-      log.Printf("%s stopped\n", tunName)
-    },
-  }
-  proc_generic( self.procTracker, nil, &o )
+    tunName := "tunnel"
+    specs := []string{}
+    
+    tunName = fmt.Sprintf( "%s_%d->%d", tunName, pair.from, pair.to )
+    specs = append( specs, fmt.Sprintf("%d",pair.from) )
+    specs = append( specs, fmt.Sprintf("%d",pair.to) )
+    
+    args := []string {
+        "forward",
+        "--udid", self.udid,
+    }
+    args = append( args, specs... )
+    fmt.Printf("Starting %s with %s\n", self.bridge.cli, args )
+    
+    o := ProcOptions{
+        procName: tunName,
+        binary: self.bridge.cli,
+        args: args,
+        stdoutHandler: func( line string, plog *log.Entry ) {
+            fmt.Println( "tunnel:%s", line )
+        },
+        stderrHandler: func( line string, plog *log.Entry ) {
+            //fmt.Println( "tunnel:%s", line )
+            if strings.Contains( line, "Start" ) {
+                if onready != nil {
+                  onready()
+                }
+                fmt.Printf( "tunnel start:%s\n", line )
+            } else {
+                //fmt.Printf( "tunnel err:%s\n", line )
+            }
+        },
+        onStop: func( interface{} ) {
+            log.Printf("%s stopped\n", tunName)
+        },
+    }
+    proc_generic( self.procTracker, nil, &o )
 }
 
 func (self *GIBridge) GetDevs( config *Config ) []string {
-  json, _ := exec.Command( self.cli,
-    []string{ "list" }... ).Output()
-  root, _ := uj.Parse( json )
-  res := []string{}
-  root.Get("deviceList").ForEach( func( dev uj.JNode ) {
-      res = append( res, dev.String() )
-  } )
-  return res
+    json, _ := exec.Command( self.cli,
+        []string{ "list" }... ).Output()
+    root, _ := uj.Parse( json )
+    res := []string{}
+    root.Get("deviceList").ForEach( func( dev uj.JNode ) {
+        res = append( res, dev.String() )
+    } )
+    return res
 }
 
 func (self *GIDev) GetPid( appname string ) uint64 {

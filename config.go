@@ -48,7 +48,7 @@ type Config struct {
     bridge       string
     alerts       []AlertConfig
     vidAlerts    []AlertConfig
-    singleId     string
+    idList       []string
 }
 
 func GetStr( root uj.JNode, path string ) string {

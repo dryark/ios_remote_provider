@@ -25,18 +25,21 @@ type DeviceTracker struct {
     cf           *ControlFloor
     cfStop       chan bool
     bridge       BridgeRoot
-    pendingDevs  [] BridgeDev
+    pendingDevs  []BridgeDev
     shuttingDown bool
-    singleId     string
+    // only activate the specific list of ids
+    idList       []string
 }
 
-func NewDeviceTracker( config *Config, detect bool, singleId string ) (*DeviceTracker) {
+func NewDeviceTracker( config *Config, detect bool, idList []string ) (*DeviceTracker) {
     var cf *ControlFloor
     var cfStop chan bool
+    var cfReady chan bool
     if detect {
-      cf, cfStop = NewControlFloor( config )
+        cf, cfStop, cfReady = NewControlFloor( config )
+        <- cfReady
     }
-    
+        
     portRange := config.portRange
     parts := strings.Split(portRange,"-")
     portMin, _ := strconv.Atoi( parts[0] )
@@ -52,7 +55,7 @@ func NewDeviceTracker( config *Config, detect bool, singleId string ) (*DeviceTr
         freePorts: []int{},
         cf: cf,
         cfStop: cfStop,
-        singleId: singleId,
+        idList: idList,
     }
     
     bridgeCreator := NewIIFBridge
@@ -128,8 +131,12 @@ func (self *DeviceTracker) cfReady() {
 func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
     udid := bdev.getUdid()
     
-    if self.singleId != "" && udid != self.singleId {
-        return nil
+    if len( self.idList ) > 0 {
+        for _,oneId := range( self.idList ) {
+            if oneId == udid {
+                return nil
+            }
+        }
     }
     
     if !self.cf.ready {

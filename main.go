@@ -4,6 +4,7 @@ import (
     "fmt"
     "os"
     "os/signal"
+    "strings"
     "syscall"
     "time"
     log "github.com/sirupsen/logrus"
@@ -39,6 +40,7 @@ func main() {
     uclop.AddCmd( "alertinfo", "Get alert info",                   runAlertInfo,  idOpt )
     uclop.AddCmd( "islocked",  "Check if device screen is locked", runIsLocked,   idOpt )
     uclop.AddCmd( "unlock",    "Unlock device screen",             runUnlock,     idOpt )
+    uclop.AddCmd( "listen",    "Test listening for devices",       runListen,     commonOpts )
     
     clickButtonOpts := append( idOpt,
         uc.OPT("-label","Button label",uc.REQ),
@@ -53,7 +55,7 @@ func main() {
 func wdaForDev( id string ) (*WDA,*DeviceTracker,*Device) {
     config := NewConfig( "config.json", "default.json", "calculated.json" )
     
-    tracker := NewDeviceTracker( config, false, "" )
+    tracker := NewDeviceTracker( config, false, []string{} )
     
     devs := tracker.bridge.GetDevs( config )
     dev1 := id
@@ -79,7 +81,7 @@ func wdaForDev( id string ) (*WDA,*DeviceTracker,*Device) {
 func vidTestForDev( id string ) (*DeviceTracker) {
     config := NewConfig( "config.json", "default.json", "calculated.json" )
     
-    tracker := NewDeviceTracker( config, false, "" )
+    tracker := NewDeviceTracker( config, false, []string{} )
     
     devs := tracker.bridge.GetDevs( config )
     dev1 := id
@@ -129,7 +131,7 @@ func runVidTest( cmd *uc.Cmd ) {
     id := ""
     idNode := cmd.Get("-id")
     if idNode != nil {
-      id = idNode.String()
+        id = idNode.String()
     }
     
     tracker := vidTestForDev( id )
@@ -150,10 +152,10 @@ func dotLoop( cmd *uc.Cmd, tracker *DeviceTracker ) {
     exit := 0
     for {
         select {
-          case <- stop:
-            exit = 1
-            break
-          default:
+            case <- stop:
+                exit = 1
+                break
+            default:
         }
         if exit == 1 { break }
         fmt.Printf(". ")
@@ -261,6 +263,21 @@ func runUnlock( cmd *uc.Cmd ) {
     } )
 }
 
+func runListen( cmd *uc.Cmd ) {
+    stopChan := make( chan bool )
+    listenForDevices( stopChan,
+        func( id string ) {
+            fmt.Printf("Connected %s\n", id )
+        },
+        func( id string ) {
+            fmt.Printf("Disconnected %s\n", id )
+        } )
+    
+    c := make(chan os.Signal, syscall.SIGTERM)
+    signal.Notify(c, os.Interrupt)
+    <-c
+}
+
 func common( cmd *uc.Cmd ) *Config {
     debug := cmd.Get("-debug").Bool()
     warn  := cmd.Get("-warn").Bool()
@@ -293,11 +310,12 @@ func runRegister( cmd *uc.Cmd ) {
 func runMain( cmd *uc.Cmd ) {
     config := common( cmd )
     
-    id := ""
     idNode := cmd.Get("-id")
+    ids := []string{}
     if idNode != nil {
-      id = idNode.String()
-      config.singleId = id
+        idString := idNode.String()
+        ids = strings.Split( idString, "," )
+        config.idList = ids
     }
     
     cleanup_procs( config )
@@ -305,10 +323,13 @@ func runMain( cmd *uc.Cmd ) {
     nosanity := cmd.Get("-nosanity").Bool()
     if !nosanity {
         sane := sanityChecks( config, cmd )
-        if !sane { return }
+        if !sane {
+            fmt.Printf("Sanity checks failed. Exiting\n")
+            return
+        }
     }
     
-    devTracker := NewDeviceTracker( config, true, id )
+    devTracker := NewDeviceTracker( config, true, ids )
     coro_sigterm( config, devTracker )
     
     coroHttpServer( devTracker )

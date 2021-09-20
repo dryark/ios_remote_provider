@@ -109,8 +109,8 @@ func cleanup_procs( config *Config ) {
         }
     }
     
-    if config.singleId != "" {
-        fmt.Printf("Running in singleId mode; killing procs with id %s\n", config.singleId )
+    if len( config.idList ) > 0 {
+        fmt.Printf("Running in singleId mode; killing procs with id %s\n", strings.Join( config.idList, "," ) )
     }
     
     // Death to all tidevice processes! *rage*
@@ -141,10 +141,12 @@ func cleanup_procs( config *Config ) {
             behind a "server" instance, and a "listen" instance. Those should be removed / handled
             by the above standard code of already tracked procs.
             */
-            if config.singleId != "" {
+            if len( config.idList ) > 0 {
                 for _, arg := range( proc.args ) {
-                    if strings.Contains( arg, config.singleId ) {
-                        doKill = true
+                    for _, oneId := range( config.idList ) {
+                        if strings.Contains( arg, oneId ) {
+                            doKill = true
+                        }
                     }
                 }
             } else {

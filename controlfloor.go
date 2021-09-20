@@ -37,7 +37,7 @@ type ControlFloor struct {
     selfSigned bool
 }
 
-func NewControlFloor( config *Config ) (*ControlFloor, chan bool) {
+func NewControlFloor( config *Config ) (*ControlFloor, chan bool, chan bool) {
     jar, err := cookiejar.New(&cookiejar.Options{})
     if err != nil {
         panic( err )
@@ -85,6 +85,7 @@ func NewControlFloor( config *Config ) (*ControlFloor, chan bool) {
     }
     
     stopCf := make( chan bool )
+    cfReady := make( chan bool )
     
     go func() {
         exit := false
@@ -103,6 +104,7 @@ func NewControlFloor( config *Config ) (*ControlFloor, chan bool) {
                 log.WithFields( log.Fields{
                     "type": "cf_login_success",
                 } ).Info( "Logged in to control floor" )
+                cfReady <- true
             } else {
                 fmt.Println("Could not login to control floor")
                 fmt.Println("Waiting 10 seconds to retry...")
@@ -120,7 +122,7 @@ func NewControlFloor( config *Config ) (*ControlFloor, chan bool) {
         }
     }()
     
-    return &self, stopCf
+    return &self, stopCf, cfReady
 }
 
 type CFResponse interface {
