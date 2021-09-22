@@ -693,3 +693,7 @@ func (self *IIFDev) wdaTidevice( onStart func(), onStop func(interface{}) ) {
 func (self *IIFDev) destroy() {
   // close running processes
 }
+
+func (self *IIFDev) SetConfig( config *CDevice ) {
+    self.config = config
+}

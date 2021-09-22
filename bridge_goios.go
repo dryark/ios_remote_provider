@@ -614,3 +614,7 @@ func (self *GIDev) wdaTidevice( onStart func(), onStop func(interface{}) ) {
 func (self *GIDev) destroy() {
   // close running processes
 }
+
+func (self *GIDev) SetConfig( config *CDevice ) {
+    self.config = config
+}

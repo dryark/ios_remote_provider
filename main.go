@@ -102,6 +102,11 @@ func vidTestForDev( id string ) (*DeviceTracker) {
         bridgeDev = NewIIFDev( tracker.bridge.(*IIFBridge), dev1, "x" )
     }
     
+    devConfig, hasDevConfig := config.devs[ dev1 ]
+    if hasDevConfig {
+        bridgeDev.SetConfig( &devConfig )
+    }
+    
     dev := NewDevice( config, tracker, dev1, bridgeDev )
     
     tracker.DevMap[ dev1 ] = dev
