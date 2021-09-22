@@ -76,6 +76,11 @@ func wdaForDev( id string ) (*WDA,*DeviceTracker,*Device) {
         bridgeDev = NewIIFDev( tracker.bridge.(*IIFBridge), dev1, "x" )
     }
     
+    devConfig, hasDevConfig := config.devs[ dev1 ]
+    if hasDevConfig {
+        bridgeDev.SetConfig( &devConfig )
+    }
+    
     dev := NewDevice( config, tracker, dev1, bridgeDev )
     bridgeDev.setProcTracker( tracker )
     dev.wdaPort = 8100
