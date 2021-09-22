@@ -47,6 +47,11 @@ func main() {
     )
     uclop.AddCmd( "clickEl", "Click a named element", runClickEl, clickButtonOpts )
     
+    runAppOpts := append( idOpt,
+        uc.OPT("-name","App name",uc.REQ),
+    )
+    uclop.AddCmd( "runapp", "Run named app", runRunApp, runAppOpts )
+        
     uclop.AddCmd( "vidtest", "Test backup video", runVidTest, idOpt ) 
     
     uclop.Run()
@@ -166,13 +171,13 @@ func dotLoop( cmd *uc.Cmd, tracker *DeviceTracker ) {
 }
 
 func runWindowSize( cmd *uc.Cmd ) {
-    wdaWrapped( cmd, func( wda *WDA ) {
+    wdaWrapped( cmd, "", func( wda *WDA ) {
       wid, heg := wda.WindowSize()
         fmt.Printf("Width: %d, Height: %d\n", wid, heg )
     } )
 }
 
-func wdaWrapped( cmd *uc.Cmd, doStuff func( wda *WDA ) ) {
+func wdaWrapped( cmd *uc.Cmd, appName string, doStuff func( wda *WDA ) ) {
     config := NewConfig( "config.json", "default.json", "calculated.json" )
   
     runCleanup( cmd )
@@ -208,7 +213,12 @@ func wdaWrapped( cmd *uc.Cmd, doStuff func( wda *WDA ) ) {
         return
     }
     
-    wda.ensureSession()
+    if appName == "" {
+        wda.ensureSession()
+    } else {
+        sid := wda.create_session( appName )
+        wda.sessionId = sid
+    }
     
     doStuff( wda )
     
@@ -221,29 +231,35 @@ func wdaWrapped( cmd *uc.Cmd, doStuff func( wda *WDA ) ) {
 }
 
 func runClickEl( cmd *uc.Cmd ) {
-    wdaWrapped( cmd, func( wda *WDA ) {
+    wdaWrapped( cmd, "", func( wda *WDA ) {
         label := cmd.Get("-label").String()
         btnName := wda.ElByName( label )
         wda.ElClick( btnName )
     } )
 }
 
+func runRunApp( cmd *uc.Cmd ) {
+    appName := cmd.Get("-name").String()
+    wdaWrapped( cmd, appName, func( wda *WDA ) {
+    } )
+}
+
 func runSource( cmd *uc.Cmd ) {
-    wdaWrapped( cmd, func( wda *WDA ) {
+    wdaWrapped( cmd, "", func( wda *WDA ) {
         xml := wda.Source()
         fmt.Println( xml )
     } )
 }
 
 func runAlertInfo( cmd *uc.Cmd ) {
-    wdaWrapped( cmd, func( wda *WDA ) {
+    wdaWrapped( cmd, "", func( wda *WDA ) {
         _, json := wda.AlertInfo()
         fmt.Println( json )
     } )
 }
 
 func runIsLocked( cmd *uc.Cmd ) {
-    wdaWrapped( cmd, func( wda *WDA ) {
+    wdaWrapped( cmd, "", func( wda *WDA ) {
         locked := wda.IsLocked()
         if locked {
             fmt.Println("Device screen is locked")
@@ -254,7 +270,7 @@ func runIsLocked( cmd *uc.Cmd ) {
 }
 
 func runUnlock( cmd *uc.Cmd ) {
-    wdaWrapped( cmd, func( wda *WDA ) {
+    wdaWrapped( cmd, "", func( wda *WDA ) {
         //wda.Unlock()
         wda.ioHid( 0x0c, 0x30 ) // power
         //time.Sleep(time.Second)

@@ -479,6 +479,19 @@ func (self *GIDev) NewBackupVideo( port int, onStop func( interface{} ) ) ( *Bac
 }
 
 func (self *GIDev) wda( onStart func(), onStop func(interface{}) ) {
+    devWdaMethod := self.config.wdaMethod
+    if devWdaMethod != "" {
+        if devWdaMethod == "tidevice" {
+            self.wdaTidevice( onStart, onStop )
+        } else {
+            self.wdaGoIos( onStart, onStop )
+        }
+    } else {
+        self.wdaGoIos( onStart, onStop )
+    }
+}
+
+func (self *GIDev) wdaGoIos( onStart func(), onStop func(interface{}) ) {
     f, err := os.OpenFile("wda.log",
         os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
     if err != nil {
@@ -524,6 +537,71 @@ func (self *GIDev) wda( onStart func(), onStop func(interface{}) ) {
                 plog.Println( line )
             }
             fmt.Fprintf( f, "runwda: %s\n", line )
+        },
+        onStop: func( wrapper interface{} ) {
+            onStop( wrapper )
+        },
+    }
+    
+    proc_generic( self.procTracker, nil, &o )
+}
+
+func (self *GIDev) wdaTidevice( onStart func(), onStop func(interface{}) ) {
+    config := self.bridge.config
+    tiPath := config.tidevicePath
+    
+    if tiPath == "" {
+        log.WithFields( log.Fields{
+            "type":  "tidevice_path_unset",
+        } ).Fatal("tidevice path is unknown. Run `make usetidevice` to correct")
+    }
+    
+    f, err := os.OpenFile("wda.log",
+        os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        log.WithFields( log.Fields{
+            "type": "wda_log_fail",
+        } ).Fatal("Could not open wda.log for writing")
+    }
+    
+    biPrefix := config.wdaPrefix
+    bi := fmt.Sprintf( "%s.WebDriverAgentRunner.xctrunner", biPrefix )
+    
+    args := []string{
+        "-u", self.udid,
+        "wdaproxy",
+        "-B", bi,
+        "-p", "0",
+    }
+    
+    fmt.Fprintf( f, "Starting WDA via %s with args %s\n", tiPath, strings.Join( args, " " ) )
+    
+    o := ProcOptions {
+        procName: "wda",
+        binary: tiPath,
+        args: args,
+        stderrHandler: func( line string, plog *log.Entry ) {
+            if strings.Contains(line, "WebDriverAgent start successfully") {
+                plog.WithFields( log.Fields{
+                    "type": "wda_start",
+                    "uuid": censorUuid(self.udid),
+                } ).Info("[WDA] successfully started")
+                onStart()
+            }
+            if strings.Contains( line, "have to mount the Developer disk image" ) {
+                plog.WithFields( log.Fields{
+                    "type": "wda_start_err",
+                    "uuid": censorUuid(self.udid),
+                } ).Fatal("[WDA] Developer disk not mounted. Cannot start WDA")
+            }
+            if strings.Contains( line, "'No app matches'" ) {
+                plog.WithFields( log.Fields{
+                    "type": "wda_start_err",
+                    "uuid": censorUuid(self.udid),
+                    "rawErr": line,
+                } ).Fatal("[WDA] Incorrect WDA bundle id")
+            }
+            fmt.Fprintln( f, line )
         },
         onStop: func( wrapper interface{} ) {
             onStop( wrapper )

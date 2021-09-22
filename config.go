@@ -11,16 +11,17 @@ import (
 )
 
 type CDevice struct {
-    udid     string
-    uiWidth  int
-    uiHeight int
-    wdaPort  int
-    vidStartMethod string
+    udid                string
+    uiWidth             int
+    uiHeight            int
+    wdaMethod           string
+    wdaPort             int
+    vidStartMethod      string
     controlCenterMethod string
 }
 
 type AlertConfig struct {
-    match string
+    match    string
     response string
 }
 
@@ -153,6 +154,7 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
             controlCenterMethod := "bottomUp"
             vidStartMethod := "app"
             widthNode := devNode.Get("uiWidth")
+            wdaMethod := ""
             if widthNode != nil {
                 uiWidth = widthNode.Int()
             }
@@ -163,6 +165,10 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
             wdaPortNode := devNode.Get("wdaPort")
             if wdaPortNode != nil {
                 wdaPort = wdaPortNode.Int()
+            }
+            wdaMethodNode := devNode.Get("wdaMethod")
+            if wdaMethodNode != nil {
+                wdaMethod = wdaMethodNode.String()
             }
             methodNode := devNode.Get("controlCenterMethod")
             if methodNode != nil {
@@ -177,6 +183,7 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
                 udid,
                 uiWidth,
                 uiHeight,
+                wdaMethod,
                 wdaPort,
                 vidStartMethod,
                 controlCenterMethod,
