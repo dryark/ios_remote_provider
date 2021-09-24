@@ -575,6 +575,7 @@ func (self *GIDev) wdaTidevice( onStart func(), onStop func(interface{}) ) {
     }
     
     fmt.Fprintf( f, "Starting WDA via %s with args %s\n", tiPath, strings.Join( args, " " ) )
+    fmt.Printf( "Starting WDA via %s with args %s\n", tiPath, strings.Join( args, " " ) )
     
     o := ProcOptions {
         procName: "wda",

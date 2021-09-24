@@ -101,6 +101,7 @@ func NewConfig( configPath string, defaultsPath string, calculatedPath string ) 
     config.vidAppBidPrefix = GetStr( root, "vidapp.bundleIdPrefix" )
     config.portRange = GetStr( root, "portRange" )
     config.bridge    = GetStr( root, "bridge" )
+    config.idList = []string{}
     
     tideviceNode := root.Get( "tidevice" )
     if tideviceNode != nil {

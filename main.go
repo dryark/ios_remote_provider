@@ -340,8 +340,10 @@ func runMain( cmd *uc.Cmd ) {
     ids := []string{}
     if idNode != nil {
         idString := idNode.String()
-        ids = strings.Split( idString, "," )
-        config.idList = ids
+        if idString != "" {
+            ids = strings.Split( idString, "," )
+            config.idList = ids
+        }
     }
     
     cleanup_procs( config )
