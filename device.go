@@ -378,12 +378,14 @@ func (self *Device) startProcs() {
                 fmt.Printf("Process vis line:%s\n", msg )
                 appStr := "application<"
                 index := strings.Index( msg, appStr )
-                after := index + len( appStr )
-                left := msg[after:]
-                endPos := strings.Index( left, ">" )
-                app := left[:endPos]
-                fmt.Printf("app:%s\n", app )
-                self.EventCh <- DevEvent{ action: DEV_APP_CHANGED, data: app }
+                if index != -1 {
+                    after := index + len( appStr )
+                    left := msg[after:]
+                    endPos := strings.Index( left, ">" )
+                    app := left[:endPos]
+                    fmt.Printf("app:%s\n", app )
+                    self.EventCh <- DevEvent{ action: DEV_APP_CHANGED, data: app }
+                }
             }
         } else if app == "dasd" {
             if strings.HasPrefix( msg, "Foreground apps changed" ) {
