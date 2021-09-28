@@ -28,6 +28,7 @@ type GIDev struct {
     name        string
     procTracker ProcTracker
     config      *CDevice
+    device      *Device
 }
 
 func NewGIBridge( config *Config, OnConnect func( dev BridgeDev ) (ProcTracker), OnDisconnect func( dev BridgeDev ), goIosPath string, procTracker ProcTracker, detect bool ) BridgeRoot {
@@ -113,7 +114,7 @@ func (self *GIBridge) list() []BridgeDevInfo {
 }
 
 func (self *GIBridge) OnConnect( udid string, name string, plog *log.Entry ) {
-    dev := NewGIDev( self, udid, name )
+    dev := NewGIDev( self, udid, name, nil )
     self.devs[ udid ] = dev
     
     devConfig, hasDevConfig := self.config.devs[ udid ]
@@ -139,7 +140,7 @@ func (self *GIBridge) destroy() {
     // close self processes
 }
 
-func NewGIDev( bridge *GIBridge, udid string, name string ) (*GIDev) {
+func NewGIDev( bridge *GIBridge, udid string, name string, device *Device ) (*GIDev) {
     log.WithFields( log.Fields{
         "type": "gidev_create",
         "udid": censorUuid( udid ),
@@ -151,6 +152,7 @@ func NewGIDev( bridge *GIBridge, udid string, name string ) (*GIDev) {
         name: name,
         udid: udid,
         procTracker: procTracker,
+        device: device,
     }
 }
 
@@ -479,15 +481,19 @@ func (self *GIDev) NewBackupVideo( port int, onStop func( interface{} ) ) ( *Bac
 }
 
 func (self *GIDev) wda( onStart func(), onStop func(interface{}) ) {
-    devWdaMethod := self.config.wdaMethod
-    if devWdaMethod != "" {
-        if devWdaMethod == "tidevice" {
-            self.wdaTidevice( onStart, onStop )
+    if self.config == nil {
+        self.wdaGoIos( onStart, onStop )
+    } else {
+        devWdaMethod := self.config.wdaMethod
+        if devWdaMethod != "" {
+            if devWdaMethod == "tidevice" {
+                self.wdaTidevice( onStart, onStop )
+            } else {
+                self.wdaGoIos( onStart, onStop )
+            }
         } else {
             self.wdaGoIos( onStart, onStop )
         }
-    } else {
-        self.wdaGoIos( onStart, onStop )
     }
 }
 
@@ -569,9 +575,8 @@ func (self *GIDev) wdaTidevice( onStart func(), onStop func(interface{}) ) {
     
     args := []string{
         "-u", self.udid,
-        "wdaproxy",
+        "xctest",
         "-B", bi,
-        "-p", "0",
     }
     
     fmt.Fprintf( f, "Starting WDA via %s with args %s\n", tiPath, strings.Join( args, " " ) )
@@ -582,11 +587,12 @@ func (self *GIDev) wdaTidevice( onStart func(), onStop func(interface{}) ) {
         binary: tiPath,
         args: args,
         stderrHandler: func( line string, plog *log.Entry ) {
-            if strings.Contains(line, "WebDriverAgent start successfully") {
+            if strings.Contains(line, " pid: ") {
                 plog.WithFields( log.Fields{
                     "type": "wda_start",
                     "uuid": censorUuid(self.udid),
-                } ).Info("[WDA] successfully started")
+                } ).Info("[WDA] successfully started - waiting 5 seconds")
+                time.Sleep( time.Second * 5 )
                 onStart()
             }
             if strings.Contains( line, "have to mount the Developer disk image" ) {
@@ -618,4 +624,8 @@ func (self *GIDev) destroy() {
 
 func (self *GIDev) SetConfig( config *CDevice ) {
     self.config = config
+}
+
+func (self *GIDev) SetDevice( device *Device ) {
+    self.device = device
 }

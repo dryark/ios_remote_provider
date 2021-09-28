@@ -3,6 +3,7 @@ package main
 import (
     "fmt"
     "os"
+    "sync"
     "time"
     
     "go.nanomsg.org/mangos/v3"
@@ -54,6 +55,7 @@ type AppStream struct {
     controlSocket mangos.Socket
     logSocket mangos.Socket
     device *Device
+    controlMutex *sync.Mutex
 }
 
 func NewAppStream( stopChan chan bool, controlPort int, vidPort int, vidLogPort int, udid string, device *Device ) (*AppStream) {
@@ -65,6 +67,7 @@ func NewAppStream( stopChan chan bool, controlPort int, vidPort int, vidLogPort 
         logSpec: fmt.Sprintf( "tcp://127.0.0.1:%d", vidLogPort ),
         udid: udid,
         device: device,
+        controlMutex: &sync.Mutex{},
     }
     return self
 }
@@ -72,13 +75,19 @@ func NewAppStream( stopChan chan bool, controlPort int, vidPort int, vidLogPort 
 func (self *AppStream) setImageConsumer( imgConsumer *ImageConsumer ) {
     self.imgHandler.setImageConsumer( imgConsumer )
     if self.controlSocket != nil {
+        self.controlMutex.Lock()
         self.controlSocket.Send([]byte(`{"action": "oneframe"}`))
+        self.controlSocket.Recv()
+        self.controlMutex.Unlock()
     }
 }
 
 func (self *AppStream) forceOneFrame() {
     if self.controlSocket != nil {
+        self.controlMutex.Lock()
         self.controlSocket.Send([]byte(`{"action": "oneframe"}`))
+        self.controlSocket.Recv()
+        self.controlMutex.Unlock()
     }
 }
 
@@ -90,6 +99,7 @@ func (self *AppStream) openControl() (mangos.Socket,bool,chan bool) {
     var controlSocket mangos.Socket
     var controlStopChan chan bool
     failures := 0
+    
     for {
         select {
             case <- self.stopChan: return nil,true,nil
@@ -105,10 +115,32 @@ func (self *AppStream) openControl() (mangos.Socket,bool,chan bool) {
             return nil,true,nil
         }
     }
+    
     log.WithFields( log.Fields{
         "type": "vidapp_control_connect",
         "udid": censorUuid( self.udid ),
     } ).Info("Vidapp - Control Connected")
+    
+    // Health check
+    go func() {
+        for {
+            self.controlMutex.Lock()
+            err := self.controlSocket.Send([]byte(`{"action": "ping"}`))
+            //var msg []byte
+            if err == nil {
+                _, err = self.controlSocket.Recv()
+                self.controlMutex.Unlock()
+            }
+            if err != nil {
+                fmt.Printf("video ping -> fail\n" )
+                controlStopChan <- true
+                break
+            }
+            //fmt.Printf("video ping -> %s\n", msg )
+            time.Sleep( time.Second * 2 )
+        }
+    }()
+    
     return controlSocket,false,controlStopChan
 }
 
@@ -189,11 +221,17 @@ func (self *AppStream) mainLoop() {
         //imgHandler := NewImgHandler( self.stopChan, self.udid )
         self.imgHandler.setEnableStream( func() {
             fmt.Printf("Sending start to vidapp\n")
+            self.controlMutex.Lock()
             self.controlSocket.Send([]byte(`{"action": "start"}`))
+            self.controlSocket.Recv()
+            self.controlMutex.Unlock()
         } )
         self.imgHandler.setDisableStream( func() {
             fmt.Printf("Sending stop to vidapp\n")
+            self.controlMutex.Lock()
             self.controlSocket.Send([]byte(`{"action": "stop"}`))
+            self.controlSocket.Recv()
+            self.controlMutex.Unlock()
         } )
         
         firstConnect := true
@@ -215,16 +253,37 @@ func (self *AppStream) mainLoop() {
             
             self.imgHandler.setSource( imgSocket )
             if firstConnect {
+                self.controlMutex.Lock()
                 self.controlSocket.Send([]byte(`{"action": "start"}`))
+                self.controlSocket.Recv()
+                self.controlMutex.Unlock()
                 firstConnect = false
             }
             res := self.imgHandler.mainLoop( vidStopChan, controlStopChan, logStopChan )
             if res == 1 { break } // stopChan
             if res == 2 { imgSocket = nil } // imgSocket connection lost
-            if res == 3 { self.controlSocket = nil } // controlSocket connection lost
+            if res == 3 { // controlSocket connection lost
+                // Either the app has died or network to it has been lost
+                
+                // Check if the app is still alive
+                alive := self.device.vidAppIsAlive()
+                // If not restart it
+                if !alive {
+                    fmt.Printf("Video broadcast died. Restarting\n")
+                    self.device.justStartBroadcast()
+                    self.controlSocket = nil
+                    imgSocket = nil
+                    self.logSocket = nil
+                } else {
+                    self.controlSocket = nil
+                }
+            }
             if res == 4 { // lost send socket
                 fmt.Printf("Lost send socket; disabling video stream\n")
+                self.controlMutex.Lock()
                 self.controlSocket.Send([]byte(`{"action": "stop"}`))
+                self.controlSocket.Recv()
+                self.controlMutex.Unlock()
             }
             if res == 5 {
                 self.logSocket = nil
@@ -252,7 +311,7 @@ func ( self *AppStream) dialAppVideo() ( mangos.Socket, int, chan bool ) {
         return nil, 1, nil
     }
     
-    sec1, _ := time.ParseDuration( "1s" )
+    sec1, _ := time.ParseDuration( "2s" )
     setError := pullSock.SetOption( mangos.OptionRecvDeadline, sec1 )
     if setError != nil {
         fmt.Printf("Set timeout error %s\n", setError )
@@ -293,8 +352,18 @@ func (self *AppStream) dialAppControl() ( mangos.Socket, int, chan bool ) {
         return nil, 1, nil
     }
     
-    /*sec1, _ := time.ParseDuration( "1s" )
-    reqSock.SetOption( mangos.OptionRecvDeadline, sec1 )*/
+    sec1, _ := time.ParseDuration( "1s" )
+    setError := reqSock.SetOption( mangos.OptionRecvDeadline, sec1 )
+    if setError != nil {
+        fmt.Printf("Set timeout error %s\n", setError )
+        os.Exit(0)
+    }
+    setError = reqSock.SetOption( mangos.OptionSendDeadline, sec1 )
+    if setError != nil {
+        fmt.Printf("Set timeout error %s\n", setError )
+        os.Exit(0)
+    }
+    
     if err = reqSock.Dial( controlSpec ); err != nil {
         log.WithFields( log.Fields{
             "type": "err_socket_dial",

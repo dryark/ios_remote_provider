@@ -71,17 +71,18 @@ func wdaForDev( id string ) (*WDA,*DeviceTracker,*Device) {
     
     var bridgeDev BridgeDev
     if config.bridge == "go-ios" {
-        bridgeDev = NewGIDev( tracker.bridge.(*GIBridge), dev1, "x" )
+        bridgeDev = NewGIDev( tracker.bridge.(*GIBridge), dev1, "x", nil )
     } else {
-        bridgeDev = NewIIFDev( tracker.bridge.(*IIFBridge), dev1, "x" )
+        bridgeDev = NewIIFDev( tracker.bridge.(*IIFBridge), dev1, "x", nil )
     }
+    dev := NewDevice( config, tracker, dev1, bridgeDev )
+    bridgeDev.SetDevice( dev )
     
     devConfig, hasDevConfig := config.devs[ dev1 ]
     if hasDevConfig {
         bridgeDev.SetConfig( &devConfig )
     }
     
-    dev := NewDevice( config, tracker, dev1, bridgeDev )
     bridgeDev.setProcTracker( tracker )
     dev.wdaPort = 8100
     wda := NewWDANoStart( config, tracker, dev )
@@ -99,20 +100,20 @@ func vidTestForDev( id string ) (*DeviceTracker) {
         dev1 = devs[0]
     }
     fmt.Printf("Dev id: %s\n", dev1)
-
+    
     var bridgeDev BridgeDev
     if config.bridge == "go-ios" {
-        bridgeDev = NewGIDev( tracker.bridge.(*GIBridge), dev1, "x" )
+        bridgeDev = NewGIDev( tracker.bridge.(*GIBridge), dev1, "x", nil )
     } else {
-        bridgeDev = NewIIFDev( tracker.bridge.(*IIFBridge), dev1, "x" )
+        bridgeDev = NewIIFDev( tracker.bridge.(*IIFBridge), dev1, "x", nil )
     }
+    dev := NewDevice( config, tracker, dev1, bridgeDev )
+    bridgeDev.SetDevice( dev )
     
     devConfig, hasDevConfig := config.devs[ dev1 ]
     if hasDevConfig {
         bridgeDev.SetConfig( &devConfig )
     }
-    
-    dev := NewDevice( config, tracker, dev1, bridgeDev )
     
     tracker.DevMap[ dev1 ] = dev
     

@@ -55,4 +55,5 @@ type BridgeDev interface {
   NewSyslogMonitor( handleLogItem func( msg string, app string ) )
   Kill( pid uint64 )
   SetConfig( devConfig *CDevice )
+  SetDevice( device *Device )
 }

@@ -35,6 +35,7 @@ type IIFDev struct {
   name        string
   procTracker ProcTracker
   config      *CDevice
+  device      *Device
 }
 
 // IosIF bridge
@@ -91,7 +92,7 @@ func (self *IIFBridge) list() []BridgeDevInfo {
 }
 
 func (self *IIFBridge) OnConnect( udid string, name string, plog *log.Entry ) {
-  dev := NewIIFDev( self, udid, name )
+  dev := NewIIFDev( self, udid, name, nil )
   self.devs[ udid ] = dev
   
   devConfig, hasDevConfig := self.config.devs[ udid ]
@@ -116,7 +117,7 @@ func (self *IIFBridge) destroy() {
   // close self processes
 }
 
-func NewIIFDev( bridge *IIFBridge, udid string, name string ) (*IIFDev) {
+func NewIIFDev( bridge *IIFBridge, udid string, name string, device *Device ) (*IIFDev) {
   log.WithFields( log.Fields{
       "type": "iifdev_create",
       "udid": censorUuid( udid ),
@@ -128,6 +129,7 @@ func NewIIFDev( bridge *IIFBridge, udid string, name string ) (*IIFDev) {
     name: name,
     udid: udid,
     procTracker: procTracker,
+    device: device,
   }
 }
 
@@ -696,4 +698,8 @@ func (self *IIFDev) destroy() {
 
 func (self *IIFDev) SetConfig( config *CDevice ) {
     self.config = config
+}
+
+func (self *IIFDev) SetDevice( device *Device ) {
+    self.device = device
 }

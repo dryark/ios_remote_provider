@@ -410,6 +410,10 @@ func (self *ControlFloor) baseNotify( name string, udid string, variant string, 
         panic( err )
     }
     
+    // Ensure the request is closed out
+    defer resp.Body.Close()
+    ioutil.ReadAll(resp.Body)
+    
     if resp.StatusCode != 200 {
         log.WithFields( log.Fields{
             "type": "cf_notify_fail",
@@ -584,6 +588,10 @@ func (self *ControlFloor) login() (bool) {
         return false
         //panic( err )
     }
+    
+    // Ensure the request is closed out
+    defer resp.Body.Close()
+    ioutil.ReadAll(resp.Body)
     
     success := false
     if resp.StatusCode != 302 {

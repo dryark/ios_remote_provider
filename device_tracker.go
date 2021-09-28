@@ -247,6 +247,7 @@ func (self *DeviceTracker) onDeviceConnect( uuid string, bdev BridgeDev ) (*Devi
         return dev
     }
     dev = NewDevice( self.Config, self, uuid, bdev )
+    bdev.SetDevice( dev )
     
     devInfo := getAllDeviceInfo( bdev )
     log.WithFields( log.Fields{

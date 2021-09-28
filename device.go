@@ -406,6 +406,14 @@ func (self *Device) startProcs2() {
     self.vidStreamer.mainLoop()
 }
 
+func (self *Device) vidAppIsAlive() bool {
+    vidPid := self.bridge.GetPid( self.config.vidAppExtBid )
+    if vidPid != 0 {
+        return true
+    }
+    return false
+}
+
 func (self *Device) enableVideo() {
     // check if video app is running
     vidPid := self.bridge.GetPid( self.config.vidAppExtBid )
@@ -460,6 +468,11 @@ func (self *Device) enableVideo() {
     }
     
     // if video app failed to start or install, just leave backup video running
+}
+
+func (self *Device) justStartBroadcast() {
+    bid := self.config.vidAppBidPrefix + "." + self.config.vidAppBid
+    self.wda.StartBroadcastStream( self.config.vidAppName, bid, self.devConfig )
 }
 
 func (self *Device) startVidStream() { // conn *ws.Conn ) {
