@@ -478,18 +478,31 @@ func (self *WDA) ElLongTouch( elId string ) {
     self.nngSocket.Recv()
 }
 
-func (self *WDA) ElByName( elName string ) string {
-    log.Info( "elByName:", elName, self.sessionId )
+func (self *WDA) GetEl( elType string, elName string, system bool, wait int ) string {
+    log.Info( "getEl:", elName )
+    
+    sysLine := ""
+    if system {
+        sysLine = "system:1";
+    }
+    
+    waitLine := ""
+    if wait > 0 {
+        waitLine = fmt.Sprintf("wait:%d",wait)
+    }
+    
     json := fmt.Sprintf( `{
-        action: "elByName"
-        name: "%s"
-        sessionId: "%s"
-    }`, elName, self.sessionId )
+        action: "getEl"
+        type: "%s"
+        id: "%s"
+        %s
+        %s
+    }`, elType, elName, sysLine, waitLine )
     
     self.nngSocket.Send([]byte(json))
     idBytes, _ := self.nngSocket.Recv()
     
-    log.Info( "elByName-result:", string(idBytes) )
+    log.Info( "getEl-result:", string(idBytes) )
     
     return string( idBytes )
 }
@@ -582,7 +595,7 @@ func (self *WDA) StartBroadcastStream( appName string, bid string, devConfig *CD
             if strings.Contains( text, alert.match ) {
                 fmt.Printf("Alert matching \"%s\" appeared. Autoresponding with \"%s\"\n",
                     alert.match, alert.response )
-                btn := self.ElByName( alert.response )
+                btn := self.GetEl( "button", alert.response, true, 0 )
                 if btn == "" {
                     fmt.Printf("Alert does not contain button \"%s\"\n", alert.response )
                 } else {
@@ -600,37 +613,29 @@ func (self *WDA) StartBroadcastStream( appName string, bid string, devConfig *CD
         // Give time for another alert to appear
         time.Sleep( time.Second * 1 )
     }
-    
-    time.Sleep( time.Second * 4 )
-    
+   
     fmt.Printf("vidApp start method: %s\n", method )
     if method == "app" {
         fmt.Printf("Starting vidApp through the app\n")
         
-        toSelector := self.ElByName( "Broadcast Selector" )
+        toSelector := self.GetEl( "button", "Broadcast Selector", false, 5 )
         self.ElClick( toSelector )
         
-        time.Sleep( time.Second * 2 )
-        //self.Source()
-        
-        startBtn := self.ElByName( "Start Broadcast" )
+        startBtn := self.GetEl( "button", "Start Broadcast", true, 5 )
         self.ElClick( startBtn )
     } else if method == "controlCenter" {
         fmt.Printf("Starting vidApp through control center\n")
         self.OpenControlCenter( ccMethod )
-        time.Sleep( time.Second * 2 )
         //self.Source()
         
-        devEl := self.ElByName( "Screen Recording" )
+        devEl := self.GetEl( "button", "Screen Recording", true, 5 )
         fmt.Printf("Selecting Screen Recording; el=%s\n", devEl )
         self.ElLongTouch( devEl )
-        time.Sleep( time.Second * 2 )
         
-        appEl := self.ElByName( appName )
+        appEl := self.GetEl( "any", appName, true, 5 )
         self.ElClick( appEl )
-        time.Sleep( time.Second )
         
-        startBtn := self.ElByName( "Start Broadcast" )
+        startBtn := self.GetEl( "button", "Start Broadcast", true, 5 )
         self.ElClick( startBtn )
         
         time.Sleep( time.Second * 3 )

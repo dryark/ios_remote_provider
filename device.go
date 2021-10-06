@@ -69,7 +69,7 @@ type Device struct {
     appStreamStopChan chan bool
     vidOut          *ws.Conn
     bridge          BridgeDev
-    backupVideo     *BackupVideo
+    backupVideo     BackupVideo
     backupActive    bool
     shuttingDown    bool
     alertMode       bool
@@ -346,7 +346,7 @@ func (self *Device) startProcs() {
                                 alert.match, alert.response )
                             if self.wdaRunning {
                                 useAlertMode = false
-                                btn := self.wda.ElByName( alert.response )
+                                btn := self.wda.GetEl( "button", alert.response, true, 0 )
                                 if btn == "" {
                                     fmt.Printf("Alert does not contain button \"%s\"\n", alert.response )
                                 } else {

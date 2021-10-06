@@ -415,7 +415,7 @@ func (self *IIFDev) screenshot() Screenshot {
     return Screenshot{}
 }
 
-type BackupVideo struct {
+type BackupVideoIIF struct {
     port int
     //sock mangos.Socket
     spec string
@@ -491,8 +491,8 @@ func (self *IIFDev) NewSyslogMonitor( handleLogItem func( msg string, app string
     proc_generic( self.procTracker, nil, &o )
 }
 
-func (self *IIFDev) NewBackupVideo( port int, onStop func( interface{} ) ) ( *BackupVideo ) {
-    vid := &BackupVideo{
+func (self *IIFDev) NewBackupVideo( port int, onStop func( interface{} ) ) BackupVideo {
+    vid := &BackupVideoIIF{
         port: port,
         spec: fmt.Sprintf( "http://127.0.0.1:%d", port ),
     }
@@ -530,7 +530,7 @@ func (self *IIFDev) NewBackupVideo( port int, onStop func( interface{} ) ) ( *Ba
     return vid
 }
 
-func (self *BackupVideo) GetFrame() []byte {
+func (self *BackupVideoIIF) GetFrame() []byte {
     resp, err := http.Get( self.spec )
     if err != nil {
         panic(err)

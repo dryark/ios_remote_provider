@@ -48,7 +48,7 @@ type BridgeDev interface {
   wda( onStart func(), onStop func(interface{}) )
   destroy()
   setProcTracker( procTracker ProcTracker )
-  NewBackupVideo( port int, onStop func( interface{} ) ) ( *BackupVideo )
+  NewBackupVideo( port int, onStop func( interface{} ) ) BackupVideo
   GetPid( appname string ) uint64
   AppInfo( bundleId string ) uj.JNode
   InstallApp( appPath string ) bool
@@ -56,4 +56,8 @@ type BridgeDev interface {
   Kill( pid uint64 )
   SetConfig( devConfig *CDevice )
   SetDevice( device *Device )
+}
+
+type BackupVideo interface {
+  GetFrame() []byte
 }

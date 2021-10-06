@@ -50,6 +50,7 @@ type Config struct {
     alerts       []AlertConfig
     vidAlerts    []AlertConfig
     idList       []string
+    cpuProfile   bool
 }
 
 func GetStr( root uj.JNode, path string ) string {

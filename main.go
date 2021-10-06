@@ -4,11 +4,13 @@ import (
     "fmt"
     "os"
     "os/signal"
+    //"runtime/pprof"
     "strings"
     "syscall"
     "time"
     log "github.com/sirupsen/logrus"
     uc "github.com/nanoscopic/uclop/mod"
+    "github.com/danielpaulus/go-ios/ios"
 )
 
 func main() {
@@ -19,6 +21,7 @@ func main() {
         uc.OPT("-config","Config file to use",0),
         uc.OPT("-defaults","Defaults config file to use",0),
         uc.OPT("-calculated","Path to calculated JSON values",0),
+        uc.OPT("-cpuprofile","Output cpu profile data",uc.FLAG),
     }
     
     idOpt := uc.OPTS{
@@ -44,6 +47,7 @@ func main() {
     
     clickButtonOpts := append( idOpt,
         uc.OPT("-label","Button label",uc.REQ),
+        uc.OPT("-system","System element",uc.FLAG),
     )
     uclop.AddCmd( "clickEl", "Click a named element", runClickEl, clickButtonOpts )
     
@@ -200,15 +204,20 @@ func wdaWrapped( cmd *uc.Cmd, appName string, doStuff func( wda *WDA ) ) {
     }
     
     wda,_,dev := wdaForDev( id )
+    devConfig := config.devs[ id ]
     
     startChan := make( chan int )
     
     var stopChan chan bool
-    if config.wdaMethod == "manual" {
-        wda.startWdaNng( func( err int, AstopChan chan bool ) {
-            stopChan = AstopChan
-            startChan <- err
-        } )                             
+    if config.wdaMethod == "manual" || devConfig.wdaMethod == "manual" {
+        fmt.Printf("Manual WDA; connecting...\n")
+        go func() {
+            wda.startWdaNng( func( err int, AstopChan chan bool ) {
+                stopChan = AstopChan
+                fmt.Printf("Manual WDA; connected; err: %d\n", err)
+                startChan <- err
+            } )
+        }()
     } else {
         //wda.startChan = startChan
         wda.start( func( err int, AstopChan chan bool ) {
@@ -224,8 +233,11 @@ func wdaWrapped( cmd *uc.Cmd, appName string, doStuff func( wda *WDA ) ) {
         return
     }
     
+    fmt.Printf("appName = %s\n", appName)
     if appName == "" {
+        fmt.Printf("Ensuring session\n")
         wda.ensureSession()
+        fmt.Printf("Ensured session\n")
     } else {
         sid := wda.create_session( appName )
         wda.sessionId = sid
@@ -244,7 +256,8 @@ func wdaWrapped( cmd *uc.Cmd, appName string, doStuff func( wda *WDA ) ) {
 func runClickEl( cmd *uc.Cmd ) {
     wdaWrapped( cmd, "", func( wda *WDA ) {
         label := cmd.Get("-label").String()
-        btnName := wda.ElByName( label )
+        system := cmd.Get("-system").Bool()
+        btnName := wda.GetEl( "any", label, system, 5 )
         wda.ElClick( btnName )
     } )
 }
@@ -293,7 +306,7 @@ func runUnlock( cmd *uc.Cmd ) {
 func runListen( cmd *uc.Cmd ) {
     stopChan := make( chan bool )
     listenForDevices( stopChan,
-        func( id string ) {
+        func( id string, goIosDevice ios.DeviceEntry ) {
             fmt.Printf("Connected %s\n", id )
         },
         func( id string ) {
@@ -320,7 +333,9 @@ func common( cmd *uc.Cmd ) *Config {
     
     setupLog( debug, warn )
     
-    return NewConfig( configPath, defaultsPath, calculatedPath )
+    config := NewConfig( configPath, defaultsPath, calculatedPath )
+    config.cpuProfile = cmd.Get("-cpuprofile").Bool()
+    return config
 }
 
 func runCleanup( *uc.Cmd ) {
@@ -336,6 +351,15 @@ func runRegister( cmd *uc.Cmd ) {
 
 func runMain( cmd *uc.Cmd ) {
     config := common( cmd )
+    
+    // This seems to do nothing... what gives
+    /*if config.cpuProfile {
+        f, _ := os.Create("cpuprofile")
+        if err == nil {
+            pprof.StartCPUProfile( f )
+            defer pprof.StopCPUProfile()
+        }
+    }*/
     
     idNode := cmd.Get("-id")
     ids := []string{}

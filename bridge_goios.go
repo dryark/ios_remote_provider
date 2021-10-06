@@ -11,6 +11,8 @@ import (
     log "github.com/sirupsen/logrus"
     uj "github.com/nanoscopic/ujsonin/v2/mod"
     "github.com/danielpaulus/go-ios/ios"
+    syslog "github.com/danielpaulus/go-ios/ios/syslog"
+    screenshotr "github.com/danielpaulus/go-ios/ios/screenshotr"
 )
 
 type GIBridge struct {
@@ -29,6 +31,9 @@ type GIDev struct {
     procTracker ProcTracker
     config      *CDevice
     device      *Device
+    goIosDevice ios.DeviceEntry
+    logStopChan chan bool
+    rx          *regexp.Regexp
 }
 
 func NewGIBridge( config *Config, OnConnect func( dev BridgeDev ) (ProcTracker), OnDisconnect func( dev BridgeDev ), goIosPath string, procTracker ProcTracker, detect bool ) BridgeRoot {
@@ -48,7 +53,7 @@ func (self *GIDev) getUdid() string {
     return self.udid
 }
 
-func listenForDevices( stopChan chan bool, onConnect func( string ), onDisconnect func( string ) ) {
+func listenForDevices( stopChan chan bool, onConnect func( string, ios.DeviceEntry ), onDisconnect func( string ) ) {
     go func() {
         exit := false
         for {
@@ -84,7 +89,9 @@ func listenForDevices( stopChan chan bool, onConnect func( string ), onDisconnec
                 }
                 
                 if msg.MessageType == "Attached" {
-                    onConnect( msg.Properties.SerialNumber )
+                    udid := msg.Properties.SerialNumber
+                    goIosDevice, _ := ios.GetDevice( udid )
+                    onConnect( udid, goIosDevice )
                 } else if msg.MessageType == "Detached" {
                     onDisconnect( msg.Properties.SerialNumber )
                 }
@@ -97,8 +104,8 @@ func listenForDevices( stopChan chan bool, onConnect func( string ), onDisconnec
 func (self *GIBridge) startDetect() {
     stopChan := make( chan bool )
     listenForDevices( stopChan,
-        func( id string ) {
-            self.OnConnect( id, "fake name", nil )
+        func( id string, goIosDevice ios.DeviceEntry ) {
+            self.OnConnect( id, "fake name", nil, goIosDevice )
         },
         func( id string ) {
             self.OnDisconnect( id, nil )
@@ -113,8 +120,9 @@ func (self *GIBridge) list() []BridgeDevInfo {
     return infos
 }
 
-func (self *GIBridge) OnConnect( udid string, name string, plog *log.Entry ) {
+func (self *GIBridge) OnConnect( udid string, name string, plog *log.Entry, goIosDevice ios.DeviceEntry ) {
     dev := NewGIDev( self, udid, name, nil )
+    dev.goIosDevice = goIosDevice
     self.devs[ udid ] = dev
     
     devConfig, hasDevConfig := self.config.devs[ udid ]
@@ -383,39 +391,36 @@ func (self *GIDev) screenshot() Screenshot {
     return Screenshot{}
 }
 
-//type BackupVideo struct {
-//    port int
-//    spec string
-//    imgId int
-//}
-
 func (self *GIDev) NewSyslogMonitor( handleLogItem func( msg string, app string ) ) {
-    o := ProcOptions{
-        procName: "syslogMonitor",
-        binary: self.bridge.cli,
-        args: []string {
-            "syslog",
-            "--udid", self.udid,
-            //"proc", "SpringBoard(SpringBoard)",
-            //"proc", "SpringBoard(FrontBoard)",
-            //"proc", "dasd",
-        },
-        startFields: log.Fields{
-            "udid": self.udid,
-        },
-        stdoutHandler: func( line string, plog *log.Entry ) {
-            root, _, err := uj.ParseFull( []byte( line ) )
-            if err == nil {
-                msg := root.Get("msg").String()
-                self.handleLogLine( msg, handleLogItem )
-                //fmt.Printf("log:%s\n", line )
-            } else {
-                fmt.Printf("Could not parse:[%s]\n", line )
+    self.logStopChan = make( chan bool )
+    self.rx = regexp.MustCompile(`\\u[0-9a-fA-F]{4}`)
+    go func() {
+        syslogConnection, err := syslog.New( self.goIosDevice )
+        if err != nil {
+            fmt.Printf("Error monitoring device syslog\n")
+            return
+        }
+        defer syslogConnection.Close()
+        
+        exit := false
+        n := 0
+        for {
+            n++
+            if ( n % 5 == 0 ) {
+                select {
+                    case <- self.logStopChan:
+                        exit = true
+                        break
+                    default:
+                }
+                if exit { break }
             }
-        },
-    }
-    
-    proc_generic( self.procTracker, nil, &o )
+            
+            logMessage, err := syslogConnection.ReadLogMessage()
+            if err != nil { continue }
+            self.handleLogLine( logMessage, handleLogItem )
+        }
+    }()
 }
 
 func (self *GIDev) handleLogLine( msg string, handleLogItem func( msg string, app string ) ) {
@@ -438,8 +443,8 @@ func (self *GIDev) handleLogLine( msg string, handleLogItem func( msg string, ap
     rest := fromType[restPos+2:]
     //fmt.Printf("Log ctx[%s] rest:%s\n", ctx, rest )
     
-    rx := regexp.MustCompile(`\\u[0-9a-fA-F]{4}`)
-    rest = rx.ReplaceAllStringFunc( rest, func( str string ) string {
+    //rx := regexp.MustCompile(`\\u[0-9a-fA-F]{4}`)
+    rest = self.rx.ReplaceAllStringFunc( rest, func( str string ) string {
         str = str[2:]
         num, _ := strconv.ParseInt(str, 16, 64)
         res := string( rune( num ) )
@@ -447,37 +452,32 @@ func (self *GIDev) handleLogLine( msg string, handleLogItem func( msg string, ap
         return res
     } )
     
-    handleLogItem( rest, ctx )    
+    handleLogItem( rest, ctx )
 }
 
-func (self *GIDev) NewBackupVideo( port int, onStop func( interface{} ) ) ( *BackupVideo ) {
-    vid := &BackupVideo{
-        port: port,
-        spec: fmt.Sprintf( "http://127.0.0.1:%d/frame?udid=%s", port, self.udid ),
+type BackupVideoGI struct {
+    giDev *GIDev
+    shotService *screenshotr.Connection
+}
+
+func (self *GIDev) NewBackupVideo( port int, onStop func( interface{} ) ) BackupVideo {
+    vid := &BackupVideoGI{
+        giDev: self,
     }
-    
-    o := ProcOptions{
-        procName: "backupVideo",
-        binary: self.bridge.cli,
-        args: []string {
-            "server",
-            "--port", strconv.Itoa( port ),
-        },
-        startFields: log.Fields{
-            "port": strconv.Itoa( port ),
-        },
-        onStop: func( wrapper interface{} ) {
-            onStop( wrapper )
-        },
-        stdoutHandler: func( line string, plog *log.Entry ) {            
-        },
-        stderrHandler: func( line string, plog *log.Entry ) {
-        },
+    shotService, err := screenshotr.New( self.goIosDevice )
+    if err != nil {
     }
-        
-    proc_generic( self.procTracker, nil, &o )
+    vid.shotService = shotService
     
     return vid
+}
+
+func (self *BackupVideoGI) GetFrame() []byte {
+    imageBytes, err := self.shotService.TakeScreenshot()
+    if err != nil {
+        return []byte{}
+    }
+    return imageBytes
 }
 
 func (self *GIDev) wda( onStart func(), onStop func(interface{}) ) {
@@ -488,6 +488,8 @@ func (self *GIDev) wda( onStart func(), onStop func(interface{}) ) {
         if devWdaMethod != "" {
             if devWdaMethod == "tidevice" {
                 self.wdaTidevice( onStart, onStop )
+            } else if devWdaMethod == "manual" {
+                onStart()
             } else {
                 self.wdaGoIos( onStart, onStop )
             }
@@ -619,7 +621,8 @@ func (self *GIDev) wdaTidevice( onStart func(), onStop func(interface{}) ) {
 }
 
 func (self *GIDev) destroy() {
-  // close running processes
+    // close running processes
+    self.logStopChan <- true
 }
 
 func (self *GIDev) SetConfig( config *CDevice ) {
