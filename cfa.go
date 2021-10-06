@@ -12,14 +12,14 @@ import (
     nanoReq  "go.nanomsg.org/mangos/v3/protocol/req"
 )
 
-type WDA struct {
+type CFA struct {
     udid          string
     devTracker    *DeviceTracker
     dev           *Device
-    wdaProc       *GenericProc
+    cfaProc       *GenericProc
     config        *Config
     base          string
-    sessionId     string
+    //sessionId     string
     startChan     chan int
     js2hid        map[int]int
     transport     *http.Transport
@@ -27,18 +27,19 @@ type WDA struct {
     nngPort       int
     nngSocket     mangos.Socket
     disableUpdate bool
+    sessionMade   bool
 }
 
-func NewWDA( config *Config, devTracker *DeviceTracker, dev *Device ) (*WDA) {
-    self := NewWDANoStart( config, devTracker, dev )
-    if config.wdaMethod != "manual" {
+func NewCFA( config *Config, devTracker *DeviceTracker, dev *Device ) (*CFA) {
+    self := NewCFANoStart( config, devTracker, dev )
+    if config.cfaMethod != "manual" {
         self.start( nil )
     } else {
-        self.startWdaNng( func( err int, stopChan chan bool ) {
+        self.startCfaNng( func( err int, stopChan chan bool ) {
             if err != 0 {
-                dev.EventCh <- DevEvent{ action: DEV_WDA_START_ERR }
+                dev.EventCh <- DevEvent{ action: DEV_CFA_START_ERR }
             } else {
-                dev.EventCh <- DevEvent{ action: DEV_WDA_START }
+                dev.EventCh <- DevEvent{ action: DEV_CFA_START }
             }
         } )
     }
@@ -51,22 +52,22 @@ func addrange( amap map[int]int, from1 int, to1 int, from2 int ) {
     }
 }
 
-func NewWDANoStart( config *Config, devTracker *DeviceTracker, dev *Device ) (*WDA) {
+func NewCFANoStart( config *Config, devTracker *DeviceTracker, dev *Device ) (*CFA) {
     jh := make( map[int]int )  
   
-    self := WDA{
+    self := CFA{
         udid:          dev.udid,
-        nngPort:       dev.wdaNngPort,
+        nngPort:       dev.cfaNngPort,
         devTracker:    devTracker,
         dev:           dev,
         config:        config,
-        base:          fmt.Sprintf("http://127.0.0.1:%d",dev.wdaPort),
+        //base:          fmt.Sprintf("http://127.0.0.1:%d",dev.wdaPort),
         js2hid:        jh,
         transport:     &http.Transport{},
     }
-    self.client = &http.Client{
-      Transport: self.transport,
-    }
+    //self.client = &http.Client{
+    //    Transport: self.transport,
+    //}
     
     /*
     The following generates a map of "JS keycodes" to Apple IO Hid event numbers.
@@ -115,7 +116,7 @@ func NewWDANoStart( config *Config, devTracker *DeviceTracker, dev *Device ) (*W
     return &self
 }
 
-func (self *WDA) dialWdaNng() ( mangos.Socket, int, chan bool ) {
+func (self *CFA) dialCfaNng() ( mangos.Socket, int, chan bool ) {
     spec := fmt.Sprintf( "tcp://127.0.0.1:%d", self.nngPort )
     
     var err error
@@ -151,13 +152,13 @@ func (self *WDA) dialWdaNng() ( mangos.Socket, int, chan bool ) {
     return reqSock, 0, stopChan
 }
 
-func (self *WDA) startWdaNng( onready func( int, chan bool ) ) {
+func (self *CFA) startCfaNng( onready func( int, chan bool ) ) {
     pairs := []TunPair{
         TunPair{ from: self.nngPort, to: 8101 },
     }
     
     self.dev.bridge.tunnel( pairs, func() {
-        nngSocket, err, stopChan := self.dialWdaNng()
+        nngSocket, err, stopChan := self.dialCfaNng()
         if err != 0 {
             onready( err, nil )
             return
@@ -170,35 +171,35 @@ func (self *WDA) startWdaNng( onready func( int, chan bool ) ) {
     } )
 }
 
-func (self *WDA) start( started func( int, chan bool ) ) {
+func (self *CFA) start( started func( int, chan bool ) ) {
     pairs := []TunPair{
         TunPair{ from: self.nngPort, to: 8101 },
     }
     
     self.dev.bridge.tunnel( pairs, func() {
-        self.dev.bridge.wda(
+        self.dev.bridge.cfa(
             func() { // onStart
                 log.WithFields( log.Fields{
-                    "type": "wda_start",
+                    "type": "cfa_start",
                     "udid":  censorUuid(self.udid),
                     "nngPort": self.nngPort,
-                } ).Info("[WDA] successfully started")
+                } ).Info("[CFA] successfully started")
                 
                 log.WithFields( log.Fields{
-                    "type": "wda_nng_dialing",
+                    "type": "cfa_nng_dialing",
                     "port": self.nngPort,
-                } ).Debug("WDA - Dialing NNG")
+                } ).Debug("CFA - Dialing NNG")
                 
-                nngSocket, err, stopChan := self.dialWdaNng()
+                nngSocket, err, stopChan := self.dialCfaNng()
                 if err == 0 {
                     self.nngSocket = nngSocket
                     log.WithFields( log.Fields{
-                        "type": "wda_nng_dialed",
+                        "type": "cfa_nng_dialed",
                         "port": self.nngPort,
                     } ).Debug("WDA - NNG Dialed")
                 } else {
-                    fmt.Printf("Error starting/connecting to WDA.\n")
-                    self.dev.EventCh <- DevEvent{ action: DEV_WDA_START_ERR }
+                    fmt.Printf("Error starting/connecting to CFA.\n")
+                    self.dev.EventCh <- DevEvent{ action: DEV_CFA_START_ERR }
                     return
                 }
                 
@@ -210,58 +211,53 @@ func (self *WDA) start( started func( int, chan bool ) ) {
                     self.startChan <- 0
                 }
                 
-                self.dev.EventCh <- DevEvent{ action: DEV_WDA_START }
+                self.dev.EventCh <- DevEvent{ action: DEV_CFA_START }
             },
             func(interface{}) { // onStop
-                self.dev.EventCh <- DevEvent{ action: DEV_WDA_STOP }
+                self.dev.EventCh <- DevEvent{ action: DEV_CFA_STOP }
             },
         )
     } )
 }
 
-func (self *WDA) stop() {
-    if self.wdaProc != nil {
-        self.wdaProc.Kill()
-        self.wdaProc = nil
+func (self *CFA) stop() {
+    if self.cfaProc != nil {
+        self.cfaProc.Kill()
+        self.cfaProc = nil
     }
 }
 
-func (self *WDA) ensureSession() {
+func (self *CFA) ensureSession() {
     sid := self.get_session()
     if sid == "" {
-        //fmt.Printf("No WDA session exists. Creating\n" )
+        //fmt.Printf("No CFA session exists. Creating\n" )
         sid = self.create_session( "" )
-        //fmt.Printf("Created wda session id=%s\n", sid )
+        //fmt.Printf("Created cfa session id=%s\n", sid )
     } else {
         //fmt.Printf("Session existing; id=%s\n", sid )
     }
-    self.sessionId = sid
 }
 
-func ( self *WDA ) get_session() ( string ) {
-    self.nngSocket.Send([]byte(`{ action: "status" }`))
-    jsonBytes, _ := self.nngSocket.Recv()
-    root, _, _ := uj.ParseFull( jsonBytes )
-    sessionIdNode := root.Get("sessionId")
-    if sessionIdNode == nil {
+func ( self *CFA ) get_session() ( string ) {
+    if self.sessionMade {
+        return "1"
+    } else {
         return ""
     }
-    
-    return sessionIdNode.String()
 }
 
-func ( self *WDA ) create_session( bundle string ) ( string ) {
+func ( self *CFA ) create_session( bundle string ) ( string ) {
     if bundle == "" {
         //bundle = "com.apple.Preferences"
         log.WithFields( log.Fields{
-            "type": "wda_session_creating",
+            "type": "cfa_session_creating",
             "bi": "NONE",
-        } ).Debug("Creating WDA session")
+        } ).Debug("Creating CFA session")
     } else {
         log.WithFields( log.Fields{
-            "type": "wda_session_creating",
+            "type": "cfa_session_creating",
             "bi": bundle,
-        } ).Debug("Creating WDA session")
+        } ).Debug("Creating CFA session")
     }
     
     self.disableUpdate = true
@@ -277,24 +273,25 @@ func ( self *WDA ) create_session( bundle string ) ( string ) {
     }
     //fmt.Printf("Sent; receiving\n" )
     
-    sessionIdBytes, err := self.nngSocket.Recv()
+    _, err = self.nngSocket.Recv()
+    sid := ""
     if err != nil {
         fmt.Printf( "sessionCreate err: %s\n", err )
-    }
+    } else {
+        sid = "1"
+        self.sessionMade = true
+    }    
     
     self.disableUpdate = false
     
-    sessionId := string( sessionIdBytes )
-    
     log.WithFields( log.Fields{
-        "type": "wda_session_created",
-        "id": sessionId,
-    } ).Info("Created WDA session")
+        "type": "cfa_session_created",
+    } ).Info("Created CFA session")
     
-    return sessionId
+    return sid
 }
 
-func (self *WDA) clickAt( x int, y int ) {
+func (self *CFA) clickAt( x int, y int ) {
     json := fmt.Sprintf( `{
         action: "tap"
         x:%d
@@ -305,7 +302,7 @@ func (self *WDA) clickAt( x int, y int ) {
     self.nngSocket.Recv()
 }
 
-func (self *WDA) hardPress( x int, y int ) {
+func (self *CFA) hardPress( x int, y int ) {
     log.Info( "Firm Press:", x, y )
     json := fmt.Sprintf( `{
         action: "tapFirm"
@@ -318,7 +315,7 @@ func (self *WDA) hardPress( x int, y int ) {
     self.nngSocket.Recv()
 }
 
-func (self *WDA) longPress( x int, y int ) {
+func (self *CFA) longPress( x int, y int ) {
     log.Info( "Press for time:", x, y, 1.0 )
     json := fmt.Sprintf( `{
         action: "tapTime"
@@ -331,7 +328,7 @@ func (self *WDA) longPress( x int, y int ) {
     self.nngSocket.Recv()
 }
 
-func (self *WDA) home() (string) {
+func (self *CFA) home() (string) {
     json := `{
       action: "button"
       name: "home"
@@ -343,7 +340,7 @@ func (self *WDA) home() (string) {
     return ""
 }
 
-func (self *WDA) keys( codes []int ) {
+func (self *CFA) keys( codes []int ) {
     if len( codes ) > 1 {
         self.typeText( codes )
         return
@@ -357,7 +354,7 @@ func (self *WDA) keys( codes []int ) {
     If someone is able to figure it out please let me know as the "ViaKeys"
     method uses the much slower [application typeType] method.
     */
-    if self.config.wdaKeyMethod == "iohid" {
+    if self.config.cfaKeyMethod == "iohid" {
         dest, ok := self.js2hid[ code ]
         if ok {
             self.keysViaIohid( []int{dest} )
@@ -369,10 +366,10 @@ func (self *WDA) keys( codes []int ) {
     }
 }
 
-func (self *WDA) keysViaIohid( codes []int ) {
+func (self *CFA) keysViaIohid( codes []int ) {
     /*
     This loop of making repeated calls is obviously quite garbage.
-    A better solution would be to make a call in WDA itself able to handle
+    A better solution would be to make a call in CFA itself able to handle
     multiple characters at once.
     
     Despite this the performIoHidEvent call is very fast so it can generally
@@ -393,7 +390,7 @@ func (self *WDA) keysViaIohid( codes []int ) {
     }
 }
 
-func (self *WDA) ioHid( page int, code int ) {
+func (self *CFA) ioHid( page int, code int ) {
     json := fmt.Sprintf(`{
       action: "iohid"
       page: %d
@@ -407,7 +404,7 @@ func (self *WDA) ioHid( page int, code int ) {
     self.nngSocket.Recv()
 }
 
-func (self *WDA) typeText( codes []int ) {
+func (self *CFA) typeText( codes []int ) {
     strArr := []string{}
 
     for _, code := range codes {
@@ -426,7 +423,7 @@ func (self *WDA) typeText( codes []int ) {
     self.nngSocket.Recv()
 }
 
-func ( self *WDA ) swipe( x1 int, y1 int, x2 int, y2 int, delay float64 ) {
+func ( self *CFA ) swipe( x1 int, y1 int, x2 int, y2 int, delay float64 ) {
     log.Info( "Swiping:", x1, y1, x2, y2, delay )
     
     json := fmt.Sprintf( `{
@@ -442,7 +439,7 @@ func ( self *WDA ) swipe( x1 int, y1 int, x2 int, y2 int, delay float64 ) {
     self.nngSocket.Recv()
 }
 
-func (self *WDA) ElClick( elId string ) {
+func (self *CFA) ElClick( elId string ) {
     log.Info( "elClick:", elId )
     json := fmt.Sprintf( `{
         action: "elClick"
@@ -453,7 +450,7 @@ func (self *WDA) ElClick( elId string ) {
     self.nngSocket.Recv()
 }
 
-func (self *WDA) ElForceTouch( elId string, pressure int ) {
+func (self *CFA) ElForceTouch( elId string, pressure int ) {
     log.Info( "elForceTouch:", elId, pressure )
     json := fmt.Sprintf( `{
         action: "elForceTouch"
@@ -466,7 +463,7 @@ func (self *WDA) ElForceTouch( elId string, pressure int ) {
     self.nngSocket.Recv()
 }
 
-func (self *WDA) ElLongTouch( elId string ) {
+func (self *CFA) ElLongTouch( elId string ) {
     log.Info( "elTouchAndHold", elId )
     json := fmt.Sprintf( `{
         action: "elTouchAndHold"
@@ -478,7 +475,7 @@ func (self *WDA) ElLongTouch( elId string ) {
     self.nngSocket.Recv()
 }
 
-func (self *WDA) GetEl( elType string, elName string, system bool, wait int ) string {
+func (self *CFA) GetEl( elType string, elName string, system bool, wait int ) string {
     log.Info( "getEl:", elName )
     
     sysLine := ""
@@ -507,7 +504,7 @@ func (self *WDA) GetEl( elType string, elName string, system bool, wait int ) st
     return string( idBytes )
 }
 
-func (self *WDA) WindowSize() (int,int) {
+func (self *CFA) WindowSize() (int,int) {
     log.Info("windowSize")
     self.nngSocket.Send([]byte(`{ action: "windowSize" }`))
     jsonBytes, _ := self.nngSocket.Recv()
@@ -519,14 +516,14 @@ func (self *WDA) WindowSize() (int,int) {
     return width,height
 }
 
-func (self *WDA) Source() string {
+func (self *CFA) Source() string {
     self.nngSocket.Send([]byte(`{ action: "source" }`))
     srcBytes, _ := self.nngSocket.Recv()
         
     return string(srcBytes)
 }
 
-func (self *WDA) AlertInfo() ( uj.JNode, string ) {
+func (self *CFA) AlertInfo() ( uj.JNode, string ) {
     self.nngSocket.Send([]byte(`{ action: "alertInfo" }`))
     jsonBytes, _ := self.nngSocket.Recv()
     fmt.Printf("alertInfo res: %s\n", string(jsonBytes) )
@@ -541,27 +538,27 @@ func (self *WDA) AlertInfo() ( uj.JNode, string ) {
     }
 }
 
-func (self *WDA) SourceJson() string {
+func (self *CFA) SourceJson() string {
     self.nngSocket.Send([]byte(`{ action: "sourcej" }`))
     srcBytes, _ := self.nngSocket.Recv()
         
     return string(srcBytes)
 }
 
-func (self *WDA) IsLocked() bool {
+func (self *CFA) IsLocked() bool {
     self.nngSocket.Send([]byte(`{ action: "isLocked" }`))
     jsonBytes, _ := self.nngSocket.Recv()
     root, _, _ := uj.ParseFull( jsonBytes )
     return root.Get("locked").Bool()
 }
 
-func (self *WDA) Unlock () {
+func (self *CFA) Unlock () {
     self.nngSocket.Send([]byte(`{ action: "unlock" }`))
     res, _ := self.nngSocket.Recv()
     fmt.Printf("Result:%s\n", string( res ) )
 }
 
-func (self *WDA) OpenControlCenter( controlCenterMethod string ) {
+func (self *CFA) OpenControlCenter( controlCenterMethod string ) {
     fmt.Printf("Opening control center\n")  
     width, height := self.WindowSize()
     
@@ -575,12 +572,14 @@ func (self *WDA) OpenControlCenter( controlCenterMethod string ) {
     }    
 }
 
-func (self *WDA) StartBroadcastStream( appName string, bid string, devConfig *CDevice ) {
+func (self *CFA) StartBroadcastStream( appName string, bid string, devConfig *CDevice ) {
     method := devConfig.vidStartMethod
     ccMethod := devConfig.controlCenterMethod
     
     sid := self.create_session( bid )
-    self.sessionId = sid
+    if sid == "" {
+        // TODO error creating session
+    }
     
     fmt.Printf("Checking for alerts\n")
     alerts := self.config.vidAlerts
@@ -645,7 +644,7 @@ func (self *WDA) StartBroadcastStream( appName string, bid string, devConfig *CD
     time.Sleep( time.Second * 5 )
 }
 
-func (self *WDA) AppChanged( bundleId string ) {
+func (self *CFA) AppChanged( bundleId string ) {
     if self.disableUpdate { return }
     
     json := fmt.Sprintf( `{

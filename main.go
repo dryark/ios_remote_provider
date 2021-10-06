@@ -37,7 +37,8 @@ func main() {
     uclop.AddCmd( "register", "Register against ControlFloor", runRegister, commonOpts )
     uclop.AddCmd( "cleanup", "Cleanup leftover processes", runCleanup, nil )
 
-    uclop.AddCmd( "wda",       "Just run WDA",                     runWDA,        idOpt )
+    //uclop.AddCmd( "wda",       "Just run WDA",                     runWDA,        idOpt )
+    uclop.AddCmd( "cfa",       "Just run CFA",                     runCFA,        idOpt )
     uclop.AddCmd( "winsize",   "Get device window size",           runWindowSize, idOpt )
     uclop.AddCmd( "source",    "Get device xml source",            runSource,     idOpt )
     uclop.AddCmd( "alertinfo", "Get alert info",                   runAlertInfo,  idOpt )
@@ -61,7 +62,7 @@ func main() {
     uclop.Run()
 }
 
-func wdaForDev( id string ) (*WDA,*DeviceTracker,*Device) {
+func cfaForDev( id string ) (*CFA,*DeviceTracker,*Device) {
     config := NewConfig( "config.json", "default.json", "calculated.json" )
     
     tracker := NewDeviceTracker( config, false, []string{} )
@@ -88,9 +89,8 @@ func wdaForDev( id string ) (*WDA,*DeviceTracker,*Device) {
     }
     
     bridgeDev.setProcTracker( tracker )
-    dev.wdaPort = 8100
-    wda := NewWDANoStart( config, tracker, dev )
-    return wda,tracker,dev
+    cfa := NewCFANoStart( config, tracker, dev )
+    return cfa,tracker,dev
 }
 
 func vidTestForDev( id string ) (*DeviceTracker) {
@@ -130,7 +130,7 @@ func vidTestForDev( id string ) (*DeviceTracker) {
     return tracker
 }
 
-func runWDA( cmd *uc.Cmd ) {
+/*func runWDA( cmd *uc.Cmd ) {
     runCleanup( cmd )
     
     id := ""
@@ -141,6 +141,21 @@ func runWDA( cmd *uc.Cmd ) {
     
     wda,tracker,_ := wdaForDev( id )
     wda.start( nil )
+ 
+    dotLoop( cmd, tracker )
+}*/
+
+func runCFA( cmd *uc.Cmd ) {
+    runCleanup( cmd )
+    
+    id := ""
+    idNode := cmd.Get("-id")
+    if idNode != nil {
+      id = idNode.String()
+    }
+    
+    cfa,tracker,_ := cfaForDev( id )
+    cfa.start( nil )
  
     dotLoop( cmd, tracker )
 }
@@ -186,13 +201,13 @@ func dotLoop( cmd *uc.Cmd, tracker *DeviceTracker ) {
 }
 
 func runWindowSize( cmd *uc.Cmd ) {
-    wdaWrapped( cmd, "", func( wda *WDA ) {
-      wid, heg := wda.WindowSize()
+    cfaWrapped( cmd, "", func( cfa *CFA ) {
+      wid, heg := cfa.WindowSize()
         fmt.Printf("Width: %d, Height: %d\n", wid, heg )
     } )
 }
 
-func wdaWrapped( cmd *uc.Cmd, appName string, doStuff func( wda *WDA ) ) {
+func cfaWrapped( cmd *uc.Cmd, appName string, doStuff func( cfa *CFA ) ) {
     config := NewConfig( "config.json", "default.json", "calculated.json" )
   
     runCleanup( cmd )
@@ -203,24 +218,24 @@ func wdaWrapped( cmd *uc.Cmd, appName string, doStuff func( wda *WDA ) ) {
         id = idNode.String()
     }
     
-    wda,_,dev := wdaForDev( id )
+    cfa,_,dev := cfaForDev( id )
     devConfig := config.devs[ id ]
     
     startChan := make( chan int )
     
     var stopChan chan bool
-    if config.wdaMethod == "manual" || devConfig.wdaMethod == "manual" {
-        fmt.Printf("Manual WDA; connecting...\n")
+    if config.cfaMethod == "manual" || devConfig.cfaMethod == "manual" {
+        fmt.Printf("Manual CFA; connecting...\n")
         go func() {
-            wda.startWdaNng( func( err int, AstopChan chan bool ) {
+            cfa.startCfaNng( func( err int, AstopChan chan bool ) {
                 stopChan = AstopChan
-                fmt.Printf("Manual WDA; connected; err: %d\n", err)
+                fmt.Printf("Manual CFA; connected; err: %d\n", err)
                 startChan <- err
             } )
         }()
     } else {
-        //wda.startChan = startChan
-        wda.start( func( err int, AstopChan chan bool ) {
+        //cfa.startChan = startChan
+        cfa.start( func( err int, AstopChan chan bool ) {
             stopChan = AstopChan
             startChan <- err
         } )
@@ -228,7 +243,7 @@ func wdaWrapped( cmd *uc.Cmd, appName string, doStuff func( wda *WDA ) ) {
     
     err := <- startChan
     if err != 0 {
-        fmt.Printf("Could not start/connect to WDA. Exiting")
+        fmt.Printf("Could not start/connect to CFA. Exiting")
         runCleanup( cmd )
         return
     }
@@ -236,55 +251,54 @@ func wdaWrapped( cmd *uc.Cmd, appName string, doStuff func( wda *WDA ) ) {
     fmt.Printf("appName = %s\n", appName)
     if appName == "" {
         fmt.Printf("Ensuring session\n")
-        wda.ensureSession()
+        cfa.ensureSession()
         fmt.Printf("Ensured session\n")
     } else {
-        sid := wda.create_session( appName )
-        wda.sessionId = sid
+        cfa.create_session( appName )
     }
     
-    doStuff( wda )
+    doStuff( cfa )
     
     stopChan <- true
     
     dev.shutdown()
-    wda.stop()
+    cfa.stop()
     
     runCleanup( cmd )
 }
 
 func runClickEl( cmd *uc.Cmd ) {
-    wdaWrapped( cmd, "", func( wda *WDA ) {
+    cfaWrapped( cmd, "", func( cfa *CFA ) {
         label := cmd.Get("-label").String()
         system := cmd.Get("-system").Bool()
-        btnName := wda.GetEl( "any", label, system, 5 )
-        wda.ElClick( btnName )
+        btnName := cfa.GetEl( "any", label, system, 5 )
+        cfa.ElClick( btnName )
     } )
 }
 
 func runRunApp( cmd *uc.Cmd ) {
     appName := cmd.Get("-name").String()
-    wdaWrapped( cmd, appName, func( wda *WDA ) {
+    cfaWrapped( cmd, appName, func( cfa *CFA ) {
     } )
 }
 
 func runSource( cmd *uc.Cmd ) {
-    wdaWrapped( cmd, "", func( wda *WDA ) {
-        xml := wda.Source()
+    cfaWrapped( cmd, "", func( cfa *CFA ) {
+        xml := cfa.Source()
         fmt.Println( xml )
     } )
 }
 
 func runAlertInfo( cmd *uc.Cmd ) {
-    wdaWrapped( cmd, "", func( wda *WDA ) {
-        _, json := wda.AlertInfo()
+    cfaWrapped( cmd, "", func( cfa *CFA ) {
+        _, json := cfa.AlertInfo()
         fmt.Println( json )
     } )
 }
 
 func runIsLocked( cmd *uc.Cmd ) {
-    wdaWrapped( cmd, "", func( wda *WDA ) {
-        locked := wda.IsLocked()
+    cfaWrapped( cmd, "", func( cfa *CFA ) {
+        locked := cfa.IsLocked()
         if locked {
             fmt.Println("Device screen is locked")
         } else {
@@ -294,12 +308,12 @@ func runIsLocked( cmd *uc.Cmd ) {
 }
 
 func runUnlock( cmd *uc.Cmd ) {
-    wdaWrapped( cmd, "", func( wda *WDA ) {
-        //wda.Unlock()
-        wda.ioHid( 0x0c, 0x30 ) // power
+    cfaWrapped( cmd, "", func( cfa *CFA ) {
+        //cfa.Unlock()
+        cfa.ioHid( 0x0c, 0x30 ) // power
         //time.Sleep(time.Second)
-        //wda.ioHid( 0x07, 0x4a ) // home keyboard button
-        wda.Unlock()
+        //cfa.ioHid( 0x07, 0x4a ) // home keyboard button
+        cfa.Unlock()
     } )
 }
 

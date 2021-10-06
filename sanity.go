@@ -29,11 +29,20 @@ func sanityChecks( config *Config, cmd *uc.Cmd ) bool {
         }
     }
     
-    if config.wdaSanityCheck {
+    /*if config.wdaSanityCheck {
         wdaPath := config.wdaPath
         wdaPath, _ = filepath.Abs( "./" + wdaPath )
-        if _, err := os.Stat( wdaPath ); os.IsNotExist( err ) {
+        if _, err := os.Stat( cfaPath ); os.IsNotExist( err ) {
             fmt.Fprintf(os.Stderr,"%s does not exist. Rerun `make` to build WebDriverAgent\n",wdaPath)
+            return false
+        }
+    }*/
+    
+    if config.cfaSanityCheck {
+        cfaPath := config.cfaPath
+        cfaPath, _ = filepath.Abs( "./" + cfaPath )
+        if _, err := os.Stat( cfaPath ); os.IsNotExist( err ) {
+            fmt.Fprintf(os.Stderr,"%s does not exist. Rerun `make` to build CFAgent\n",cfaPath)
             return false
         }
     }

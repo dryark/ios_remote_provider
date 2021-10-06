@@ -6,18 +6,20 @@
     bin_paths: {
         iosif: "bin/iosif"
         wda: "bin/wda"
+        cfa: "bin/cfa"
         goios: "bin/go-ios"
     }
     bridge: "go-ios"
     repos: {
-        wda: "https://github.com/nanoscopic/WebDriverAgent.git"
+        wda: "https://github.com/appium/WebDriverAgent.git"
+        cfa: "https://github.com/nanoscopic/ControlFloorAgent.git"
         ujsonin: "https://github.com/nanoscopic/ujsonin.git"
         pbxproj: "https://github.com/kronenthaler/mod-pbxproj"
         iosif: "https://github.com/nanoscopic/iosif.git"
         vidapp: "https://github.com/nanoscopic/ios_video_app.git"
         goios: "https://github.com/nanoscopic/go-ios.git"
     }
-    wda: {
+    cfa: {
         lib: {
             buildStyle: "Automatic" // or "Manual"
             provisioningProfile: "" // always blank
@@ -44,6 +46,7 @@
         }
     },
     wdaXctestRunFolder: "repos/WebDriverAgent/build/Build/Products"
+    cfaXctestRunFolder: "repos/CFAgent/build/Build/Products"
     port: 8027
     portRange: "8101-8200"
     alerts: [

@@ -14,7 +14,7 @@ type CDevice struct {
     udid                string
     uiWidth             int
     uiHeight            int
-    wdaMethod           string
+    cfaMethod           string
     wdaPort             int
     vidStartMethod      string
     controlCenterMethod string
@@ -32,15 +32,18 @@ type Config struct {
     cfHost       string
     cfUsername   string
     devs         map [string] CDevice
-    xcPath       string
+    //cfaXcPath       string
     https        bool
     selfSigned   bool
     wdaPath      string
+    cfaPath      string
     tidevicePath string
-    wdaMethod    string
-    wdaKeyMethod string
+    cfaMethod    string
+    cfaKeyMethod string
     wdaPrefix    string
-    wdaSanityCheck bool
+    cfaPrefix    string
+    cfaSanityCheck bool
+    //wdaSanityCheck bool
     vidAppName   string
     vidAppBid    string
     vidAppBidPrefix string
@@ -56,7 +59,7 @@ type Config struct {
 func GetStr( root uj.JNode, path string ) string {
     node := root.Get( path )
     if node == nil {
-        fmt.Fprintf( os.Stderr, "%s is not set in either config.json or default.json" )
+        fmt.Fprintf( os.Stderr, "%s is not set in either config.json or default.json", path )
         os.Exit(1)
     }
     return node.String()
@@ -64,7 +67,7 @@ func GetStr( root uj.JNode, path string ) string {
 func GetBool( root uj.JNode, path string ) bool {
     node := root.Get( path )
     if node == nil {
-        fmt.Fprintf( os.Stderr, "%s is not set in either config.json or default.json" )
+        fmt.Fprintf( os.Stderr, "%s is not set in either config.json or default.json", path )
         os.Exit(1)
     }
     return node.Bool()
@@ -72,7 +75,7 @@ func GetBool( root uj.JNode, path string ) bool {
 func GetInt( root uj.JNode, path string ) int {
     node := root.Get( path )
     if node == nil {
-        fmt.Fprintf( os.Stderr, "%s is not set in either config.json or default.json" )
+        fmt.Fprintf( os.Stderr, "%s is not set in either config.json or default.json", path )
         os.Exit(1)
     }
     return node.Int()
@@ -88,14 +91,16 @@ func NewConfig( configPath string, defaultsPath string, calculatedPath string ) 
     config.httpPort   = GetInt(  root, "port" )
     config.cfHost     = GetStr(  root, "controlfloor.host" )
     config.cfUsername = GetStr(  root, "controlfloor.username" )
-    config.xcPath     = GetStr(  root, "wdaXctestRunFolder" )
+    //config.xcPath     = GetStr(  root, "wdaXctestRunFolder" )
     config.https      = GetBool( root, "controlfloor.https" )
     config.selfSigned = GetBool( root, "controlfloor.selfSigned" )
     config.wdaPath    = GetStr(  root, "bin_paths.wda" )
-    config.wdaMethod  = GetStr(  root, "wda.startMethod" )
-    config.wdaKeyMethod    = GetStr( root, "wda.keyMethod" )
-    config.wdaPrefix       = GetStr( root, "wda.bundleIdPrefix" )
-    config.wdaSanityCheck  = GetBool( root, "wda.sanityCheck" )
+    config.cfaPath    = GetStr(  root, "bin_paths.cfa" )
+    config.cfaMethod  = GetStr(  root, "cfa.startMethod" )
+    config.cfaKeyMethod    = GetStr( root, "cfa.keyMethod" )
+    config.cfaPrefix       = GetStr( root, "cfa.bundleIdPrefix" )
+    //config.wdaPrefix       = GetStr( root, "wda.bundleIdPrefix" )
+    config.cfaSanityCheck  = GetBool( root, "cfa.sanityCheck" )
     config.vidAppName      = GetStr( root, "vidapp.name" )
     config.vidAppBid       = GetStr( root, "vidapp.bundleId" )
     config.vidAppExtBid    = GetStr( root, "vidapp.extBundleId" )
@@ -156,7 +161,7 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
             controlCenterMethod := "bottomUp"
             vidStartMethod := "app"
             widthNode := devNode.Get("uiWidth")
-            wdaMethod := ""
+            cfaMethod := ""
             if widthNode != nil {
                 uiWidth = widthNode.Int()
             }
@@ -168,9 +173,9 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
             if wdaPortNode != nil {
                 wdaPort = wdaPortNode.Int()
             }
-            wdaMethodNode := devNode.Get("wdaMethod")
-            if wdaMethodNode != nil {
-                wdaMethod = wdaMethodNode.String()
+            cfaMethodNode := devNode.Get("cfaMethod")
+            if cfaMethodNode != nil {
+                cfaMethod = cfaMethodNode.String()
             }
             methodNode := devNode.Get("controlCenterMethod")
             if methodNode != nil {
@@ -182,13 +187,13 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
             }
             
             dev := CDevice{
-                udid,
-                uiWidth,
-                uiHeight,
-                wdaMethod,
-                wdaPort,
-                vidStartMethod,
-                controlCenterMethod,
+                udid: udid,
+                uiWidth: uiWidth,
+                uiHeight: uiHeight,
+                cfaMethod: cfaMethod,
+                wdaPort: wdaPort,
+                vidStartMethod: vidStartMethod,
+                controlCenterMethod: controlCenterMethod,
             }
             devs[ udid ] = dev
         } )

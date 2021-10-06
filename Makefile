@@ -34,12 +34,22 @@ clean:
 wdaclean:
 	$(RM) -rf repos/WebDriverAgent/build
 
+cfaclean:
+	$(RM) -rf repos/CFAgent/build
+
 repos/WebDriverAgent/versionMarker: repos/WebDriverAgent repos/versionMarkers/WebDriverAgent
 	cd repos/WebDriverAgent && git pull
 	touch repos/WebDriverAgent/versionMarker
 
+repos/CFAgent/versionMarker: repos/CFAgent repos/versionMarkers/CFAgent
+	cd repos/CFAgent && git pull
+	touch repos/CFAgent/versionMarker
+
 repos/WebDriverAgent:
 	git clone $(config_repos_wda) repos/WebDriverAgent
+
+repos/CFAgent:
+	git clone $(config_repos_cfa) repos/CFAgent
 
 repos/ujsonin/versionMarker: repos/ujsonin repos/versionMarkers/ujsonin
 	cd repos/ujsonin && git pull
@@ -108,7 +118,13 @@ vidstream_unsigned.ipa:
 
 clonewda: repos/WebDriverAgent
 
+clonecfa: repos/CFAgent
+
 wda: repos/WebDriverAgent/build
+
+cfa: repos/CFAgent/build
+
+vidapp: repos/vidapp
 
 python/deps_installed: repos/mod-pbxproj
 	pip3 install -r ./python/requires.txt
@@ -120,6 +136,13 @@ repos/WebDriverAgent/build: repos/WebDriverAgent/versionMarker repos/mod-pbxproj
 	@./bin/gojq overlay -file1 default.json -file2 config.json -json > muxed.json
 	./python/configure_wda.py muxed.json
 	cd repos/WebDriverAgent && xcodebuild -scheme WebDriverAgentRunner -allowProvisioningUpdates -destination generic/platform=iOS -derivedDataPath "./build" build-for-testing
+
+repos/CFAgent/build: repos/CFAgent/versionMarker repos/mod-pbxproj config.json python/deps_installed bin/gojq
+	@if [ -e repos/CFAgent/build ]; then rm -rf repos/CFAgent/build; fi;
+	mkdir repos/CFAgent/build
+	@./bin/gojq overlay -file1 default.json -file2 config.json -json > muxed.json
+	./python/configure_cfa.py muxed.json
+	cd repos/CFAgent && xcodebuild -scheme CFAgent -allowProvisioningUpdates -destination generic/platform=iOS -derivedDataPath "./build" build-for-testing
 
 repos/mod-pbxproj:
 	git clone $(config_repos_pbxproj) repos/mod-pbxproj

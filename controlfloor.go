@@ -520,7 +520,7 @@ func (self *ControlFloor) notifyProvisionStopped( udid string ) {
     } )
 }
 
-func (self *ControlFloor) notifyWdaStopped( udid string ) {
+/*func (self *ControlFloor) notifyWdaStopped( udid string ) {
     self.baseNotify("WDA stop", udid, "wdaStopped", url.Values{
         "udid": {udid},
     } )
@@ -528,6 +528,18 @@ func (self *ControlFloor) notifyWdaStopped( udid string ) {
 
 func (self *ControlFloor) notifyWdaStarted( udid string ) {
     self.baseNotify("WDA start", udid, "wdaStarted", url.Values{
+        "udid": {udid},
+    } )
+}*/
+
+func (self *ControlFloor) notifyCfaStopped( udid string ) {
+    self.baseNotify("CFA stop", udid, "cfaStopped", url.Values{
+        "udid": {udid},
+    } )
+}
+
+func (self *ControlFloor) notifyCfaStarted( udid string ) {
+    self.baseNotify("CFA start", udid, "cfaStarted", url.Values{
         "udid": {udid},
     } )
 }

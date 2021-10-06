@@ -5,28 +5,26 @@
         https: true
         selfSigned: true
     }
-    wda: {
+    cfa: {
         // Your Apple Developer Team OU
         // If you don't know this, you can find it by running ./util/signers.pl
         devTeamOu: "7628766FL2"
         
-        // Some unique Bundle ID prefix to usefor the Bundle IDs for WebDriverAgent
-        // This default, "com.appium", will likely work for paid developer accounts
+        // Some unique Bundle ID prefix to usefor the Bundle IDs for CFAgent
+        // This default, "com.dryark", will likely work for paid developer accounts
         // Make sure the provisioning profile you setup has a wildcard identifier matching this
-        // The two identifiers that will be made if "com.appium" is used are
-        // "com.appium.WebDriverAgentLib"
-        // "com.appium.WebDriverAgentRunner"
+        // The two identifiers that will be made if "com.dryark" is used are
+        // "com.dryark.CFAgentLib"
+        // "com.dryark.CFAgent"
         // If you are using a free developer account, you will not have any provisioning profile,
         //   so you will need to set this bundle prefix to something globally unique, such as
         //   "com.[your name]"
-        bundleIdPrefix: "com.appium"
+        bundleIdPrefix: "com.dryark"
         
         runner: {
             buildStyle: "Automatic" // or "Manual"
             provisioningProfile: "" // specify when buildStyle is Manual
         }
-        
-        startMethod: "tidevice"
     },
     vidapp: {
         devTeamOu: "7628766FL2"
@@ -34,7 +32,7 @@
     },
     devices: [
         {
-            udid: "00008020-001D4D661E04003A"
+            udid: "00008020-001D0D661E040011"
             uiWidth: 414
             uiHeight: 896
             controlCenterMethod: "topDown"

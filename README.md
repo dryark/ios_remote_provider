@@ -7,14 +7,6 @@ and also enables the devices to be controlled remotely.
 ## Clone repos
 1. `git clone https://github.com/nanoscopic/ios_remote_provider.git`
 1. `git clone https://github.com/nanoscopic/controlfloor.git`
-1. `git clone https://github.com/nanoscopic/ios_video_app.git`
-1. `git clone https://github.com/nanomsg/nng.git`
-
-## Build nng - https://github.com/nanomsg/nng
-1. `cd nng`
-1. `cmake`
-1. `make`
-1. `make install`
 
 ## Build ControlFloor
 1. `cd controlfloor`
@@ -23,22 +15,22 @@ and also enables the devices to be controlled remotely.
 1. `make`
 1. `./main run`
 
-Open `https://yourip:8080` to see if controlfloor is running
+Open `https://yourip:8080` to see if ControlFloor is running
 
-## Build iOS Remote Provider and WDA
+## Build iOS Remote Provider and CFAgent
 1. `cd ios_remote_provider`
 1. Copy example config: `cp config.json.example config.json`
 1. Edit `config.json` to add your Apple developer details
 1. `make`
 1. `security unlock-keychain login.keychain` # to make sure developer details are there for xcode build
-1. `make wda`
+1. `make cfa`
 
 ## Register Provider
 1. `./main register`
 1. Press [enter] to register using the default password
 
 ## Build and setup CF Vidstream App
-1. `cd ios_video_app`
+1. `cd repos/vidapp`
 1. Open the xcode project and install CF Vidstream on the device
 
 ## Start CF Vidstream App Manually
@@ -57,6 +49,7 @@ Open `https://yourip:8080` to see if controlfloor is running
     A. `./main winsize`
     B. -or- `./main winsize -id [your device id]` 
     C. Observe "Width" and "Height" displayed
+    D. Ctrl-C to stop
 1. Add device specific config block to `config.json`:  
     ```  
     {
@@ -74,8 +67,10 @@ Open `https://yourip:8080` to see if controlfloor is running
 
 ## Using tidevice instead of go-ios
 
-You may wish to use tidevice instead of go-ios to start WDA. Do the following to get it setup:  
+You may wish to use tidevice instead of go-ios to start CFA. Do the following to get it setup:  
   
+1. Reconsider using tidevice and don't follow these steps
+
 1. Install tidevice. `pip3 install tidevice`
 
 1. Add a WDA start method to your `config.json`:  

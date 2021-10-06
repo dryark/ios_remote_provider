@@ -25,9 +25,9 @@ const (
 
 const (
     DEV_STOP = iota
-    DEV_WDA_START
-    DEV_WDA_START_ERR
-    DEV_WDA_STOP
+    DEV_CFA_START
+    DEV_CFA_START_ERR
+    DEV_CFA_STOP
     DEV_VIDEO_START
     DEV_VIDEO_STOP
     DEV_ALERT_APPEAR
@@ -41,7 +41,7 @@ type Device struct {
     lock            *sync.Mutex
     wdaPort         int
     wdaPortFixed    bool
-    wdaNngPort      int
+    cfaNngPort      int
     vidPort         int
     vidControlPort  int
     vidLogPort      int
@@ -58,8 +58,10 @@ type Device struct {
     connected       bool
     EventCh         chan DevEvent
     BackupCh        chan BackupEvent
-    wda             *WDA
-    wdaRunning      bool
+    cfa             *CFA
+    //wda             *WDA
+    cfaRunning      bool
+    //wdaRunning      bool
     devTracker      *DeviceTracker
     config          *Config
     devConfig       *CDevice
@@ -81,7 +83,7 @@ func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev Bri
         devTracker:      devTracker,
         //wdaPort:         devTracker.getPort(),
         wdaPortFixed:    false,
-        wdaNngPort:      devTracker.getPort(),
+        cfaNngPort:      devTracker.getPort(),
         vidPort:         devTracker.getPort(),
         vidLogPort:      devTracker.getPort(),
         vidMode:         VID_NONE,
@@ -97,7 +99,8 @@ func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev Bri
         EventCh:         make( chan DevEvent ),
         BackupCh:        make( chan BackupEvent ),
         bridge:          bdev,
-        wdaRunning:      false,
+        cfaRunning:      false,
+        //wdaRunning:      false,
     }
     if devConfig, ok := config.devs[udid]; ok {
         dev.devConfig = &devConfig
@@ -119,10 +122,10 @@ func ( self *Device ) isShuttingDown() bool {
 
 func ( self *Device ) releasePorts() {
     dt := self.devTracker
-    if !self.wdaPortFixed {
-        dt.freePort( self.wdaPort )
-    }
-    dt.freePort( self.wdaNngPort )
+    //if !self.wdaPortFixed {
+    //    dt.freePort( self.wdaPort )
+    //}
+    dt.freePort( self.cfaNngPort )
     dt.freePort( self.vidPort )
     dt.freePort( self.vidLogPort )
     dt.freePort( self.vidControlPort )
@@ -172,10 +175,10 @@ func (self *Device) shutdown() {
     }
 }
 
-func (self *Device) onWdaReady() {
-    self.wdaRunning = true
-    self.cf.notifyWdaStarted( self.udid )
-    self.wda.ensureSession()
+func (self *Device) onCfaReady() {
+    self.cfaRunning = true
+    self.cf.notifyCfaStarted( self.udid )
+    self.cfa.ensureSession()
     // start video streaming
     
     self.forwardVidPorts( self.udid, func() {
@@ -194,15 +197,15 @@ func (self *Device) startEventLoop() {
                 action := event.action
                 if action == DEV_STOP { // stop event loop
                     break DEVEVENTLOOP
-                } else if action == DEV_WDA_START { // WDA started
-                    self.onWdaReady()
-                } else if action == DEV_WDA_START_ERR {
-                    fmt.Printf("Error starting/connecting to WDA.\n")
+                } else if action == DEV_CFA_START { // CFA started
+                    self.onCfaReady()
+                } else if action == DEV_CFA_START_ERR {
+                    fmt.Printf("Error starting/connecting to CFA.\n")
                     self.shutdown()
                     break DEVEVENTLOOP
-                } else if action == DEV_WDA_STOP { // WDA stopped
-                    self.wdaRunning = false
-                    self.cf.notifyWdaStopped( self.udid )
+                } else if action == DEV_CFA_STOP { // CFA stopped
+                    self.cfaRunning = false
+                    self.cf.notifyCfaStopped( self.udid )
                 } else if action == DEV_VIDEO_START { // first video frame
                     self.cf.notifyVideoStarted( self.udid )
                     self.onFirstFrame( &event )
@@ -306,18 +309,22 @@ func (self *Device) startBackupVideo() {
 }
 
 func (self *Device) devAppChanged( bundleId string ) {
-    if self.wda == nil {
+    if self.cfa == nil {
         return
     }
     
-    self.wda.AppChanged( bundleId )
+    self.cfa.AppChanged( bundleId )
 }
 
 func (self *Device) startProcs() {
-    // start wda
-    self.wda = NewWDA( self.config, self.devTracker, self )
-    if self.config.wdaMethod == "manual" {
-        //self.wda.startWdaNng()
+    // Start CFA
+    self.cfa = NewCFA( self.config, self.devTracker, self )
+    
+    // Start WDA
+    //self.wda = NewWDA( self.config, self.devTracker, self )
+    
+    if self.config.cfaMethod == "manual" {
+        //self.cfa.startCfaNng()
     }
     
     self.startBackupFrameProvider() // just the timed loop
@@ -344,13 +351,13 @@ func (self *Device) startProcs() {
                         if strings.Contains( msg, alert.match ) {
                             fmt.Printf("Alert matching \"%s\" appeared. Autoresponding with \"%s\"\n",
                                 alert.match, alert.response )
-                            if self.wdaRunning {
+                            if self.cfaRunning {
                                 useAlertMode = false
-                                btn := self.wda.GetEl( "button", alert.response, true, 0 )
+                                btn := self.cfa.GetEl( "button", alert.response, true, 0 )
                                 if btn == "" {
                                     fmt.Printf("Alert does not contain button \"%s\"\n", alert.response )
                                 } else {
-                                    self.wda.ElClick( btn )
+                                    self.cfa.ElClick( btn )
                                 }
                             }
                             
@@ -452,7 +459,7 @@ func (self *Device) enableVideo() {
             panic("Wrong vidstream version")
         }
       
-        self.wda.StartBroadcastStream( self.config.vidAppName, bid, self.devConfig )
+        self.cfa.StartBroadcastStream( self.config.vidAppName, bid, self.devConfig )
         self.vidUp = true
         self.vidMode = VID_APP
         return
@@ -464,7 +471,7 @@ func (self *Device) enableVideo() {
     // install it, then start it
     success := self.bridge.InstallApp( "vidstream.xcarchive/Products/Applications/vidstream.app" )
     if success {
-        self.wda.StartBroadcastStream( self.config.vidAppName, bid, self.devConfig )
+        self.cfa.StartBroadcastStream( self.config.vidAppName, bid, self.devConfig )
         self.vidMode = VID_APP
         return
     }
@@ -474,7 +481,7 @@ func (self *Device) enableVideo() {
 
 func (self *Device) justStartBroadcast() {
     bid := self.config.vidAppBidPrefix + "." + self.config.vidAppBid
-    self.wda.StartBroadcastStream( self.config.vidAppName, bid, self.devConfig )
+    self.cfa.StartBroadcastStream( self.config.vidAppName, bid, self.devConfig )
 }
 
 func (self *Device) startVidStream() { // conn *ws.Conn ) {
@@ -555,28 +562,28 @@ func (self *Device) onFirstFrame( event *DevEvent ) {
 }
 
 func (self *Device) clickAt( x int, y int ) {
-    self.wda.clickAt( x, y )
+    self.cfa.clickAt( x, y )
 }
 
 func (self *Device) hardPress( x int, y int ) {
-    self.wda.hardPress( x, y )
+    self.cfa.hardPress( x, y )
 }
 
 func (self *Device) longPress( x int, y int ) {
-    self.wda.longPress( x, y )
+    self.cfa.longPress( x, y )
 }
 
 func (self *Device) home() {
-    self.wda.home()
+    self.cfa.home()
 }
 
 func (self *Device) iohid( page int, code int ) {
-    self.wda.ioHid( page, code )
+    self.cfa.ioHid( page, code )
 }
 
 func (self *Device) swipe( x1 int, y1 int, x2 int, y2 int, delayBy100 int ) {
     delay := float64( delayBy100 ) / 100.0
-    self.wda.swipe( x1, y1, x2, y2, delay )
+    self.cfa.swipe( x1, y1, x2, y2, delay )
 }
 
 func (self *Device) keys( keys string ) {
@@ -586,9 +593,9 @@ func (self *Device) keys( keys string ) {
         code, _ := strconv.Atoi( key )
         codes = append( codes, code )
     }
-    self.wda.keys( codes )
+    self.cfa.keys( codes )
 }
 
 func (self *Device) source() string {
-    return self.wda.SourceJson()
+    return self.cfa.SourceJson()
 }

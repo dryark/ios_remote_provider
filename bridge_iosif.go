@@ -556,68 +556,68 @@ func (self *BackupVideoIIF) GetFrame() []byte {
     return jpegBytes.Bytes()
 }
 
-func (self *IIFDev) wda( onStart func(), onStop func(interface{}) ) {
+func (self *IIFDev) cfa( onStart func(), onStop func(interface{}) ) {
     config := self.bridge.config
-    method := config.wdaMethod
+    method := config.cfaMethod
     
     if method == "go-ios" {
-        self.wdaGoIos( onStart, onStop )
+        self.cfaGoIos( onStart, onStop )
     } else if method == "tidevice" {
-        self.wdaTidevice( onStart, onStop )
+        self.cfaTidevice( onStart, onStop )
     } else if method == "manual" {
         //self.wdaTidevice( port, onStart, onStop, mjpegPort )
     } else {
-        fmt.Printf("Unknown wda start method %s\n", method )
+        fmt.Printf("Unknown cfa start method %s\n", method )
         os.Exit(1)
     }
 }
 
-func (self *IIFDev) wdaGoIos( onStart func(), onStop func(interface{}) ) {
-    f, err := os.OpenFile("wda.log",
+func (self *IIFDev) cfaGoIos( onStart func(), onStop func(interface{}) ) {
+    f, err := os.OpenFile("cfa.log",
         os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
     if err != nil {
         log.WithFields( log.Fields{
             "type": "wda_log_fail",
-        } ).Fatal("Could not open wda.log for writing")
+        } ).Fatal("Could not open cfa.log for writing")
     }
     
     config := self.bridge.config
     biPrefix := config.wdaPrefix
-    bi := fmt.Sprintf( "%s.WebDriverAgentRunner.xctrunner", biPrefix )
+    bi := fmt.Sprintf( "%s.CFAgentRunner.xctrunner", biPrefix )
     
     args := []string{
         "runwda",
         "--bundleid", bi,
         "--testrunnerbundleid", bi,
-        "--xctestconfig", "WebDriverAgentRunner.xctest",
+        "--xctestconfig", "CFAgentRunner.xctest",
         "--udid", self.udid,
     }
     
-    fmt.Fprintf( f, "Starting WDA via %s with args %s\n", "bin/go-ios", strings.Join( args, " " ) )
-    fmt.Printf( "Starting WDA via %s with args %s\n", "bin/go-ios", strings.Join( args, " " ) )
+    fmt.Fprintf( f, "Starting CFA via %s with args %s\n", "bin/go-ios", strings.Join( args, " " ) )
+    fmt.Printf( "Starting CFA via %s with args %s\n", "bin/go-ios", strings.Join( args, " " ) )
     
     o := ProcOptions {
-        procName: "wda",
+        procName: "cfa",
         binary: "bin/go-ios",
         args: args,
         stdoutHandler: func( line string, plog *log.Entry ) {
             if strings.Contains( line, "configuration is unsupported" ) {
                 plog.Println( line )
             }
-            fmt.Fprintf( f, "runwda: %s\n", line )
+            fmt.Fprintf( f, "runcfa: %s\n", line )
         },
         stderrHandler: func( line string, plog *log.Entry ) {
             if strings.Contains(line, "NNG Ready") {
                 plog.WithFields( log.Fields{
-                    "type": "wda_start",
+                    "type": "cfa_start",
                     "uuid": censorUuid(self.udid),
-                } ).Info("[WDA] successfully started")
+                } ).Info("[CFA] successfully started")
                 onStart()
             }
             if strings.Contains( line, "configuration is unsupported" ) {
                 plog.Println( line )
             }
-            fmt.Fprintf( f, "runwda: %s\n", line )
+            fmt.Fprintf( f, "runcfa: %s\n", line )
         },
         onStop: func( wrapper interface{} ) {
             onStop( wrapper )
@@ -627,7 +627,7 @@ func (self *IIFDev) wdaGoIos( onStart func(), onStop func(interface{}) ) {
     proc_generic( self.procTracker, nil, &o )
 }
 
-func (self *IIFDev) wdaTidevice( onStart func(), onStop func(interface{}) ) {
+func (self *IIFDev) cfaTidevice( onStart func(), onStop func(interface{}) ) {
     config := self.bridge.config
     tiPath := config.tidevicePath
     
@@ -637,16 +637,16 @@ func (self *IIFDev) wdaTidevice( onStart func(), onStop func(interface{}) ) {
         } ).Fatal("tidevice path is unknown. Run `make usetidevice` to correct")
     }
     
-    f, err := os.OpenFile("wda.log",
+    f, err := os.OpenFile("cfa.log",
         os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
     if err != nil {
         log.WithFields( log.Fields{
-            "type": "wda_log_fail",
-        } ).Fatal("Could not open wda.log for writing")
+            "type": "cfa_log_fail",
+        } ).Fatal("Could not open cfa.log for writing")
     }
     
-    biPrefix := config.wdaPrefix
-    bi := fmt.Sprintf( "%s.WebDriverAgentRunner.xctrunner", biPrefix )
+    biPrefix := config.cfaPrefix
+    bi := fmt.Sprintf( "%s.CFAgentRunner.xctrunner", biPrefix )
     
     args := []string{
         "-u", self.udid,
@@ -655,32 +655,32 @@ func (self *IIFDev) wdaTidevice( onStart func(), onStop func(interface{}) ) {
         "-p", "0",
     }
     
-    fmt.Fprintf( f, "Starting WDA via %s with args %s\n", tiPath, strings.Join( args, " " ) )
+    fmt.Fprintf( f, "Starting CFA via %s with args %s\n", tiPath, strings.Join( args, " " ) )
     
     o := ProcOptions {
         procName: "wda",
         binary: tiPath,
         args: args,
         stderrHandler: func( line string, plog *log.Entry ) {
-            if strings.Contains(line, "WebDriverAgent start successfully") {
+            if strings.Contains(line, "CFAgent start successfully") {
                 plog.WithFields( log.Fields{
-                    "type": "wda_start",
+                    "type": "cfa_start",
                     "uuid": censorUuid(self.udid),
-                } ).Info("[WDA] successfully started")
+                } ).Info("[CFA] successfully started")
                 onStart()
             }
             if strings.Contains( line, "have to mount the Developer disk image" ) {
                 plog.WithFields( log.Fields{
-                    "type": "wda_start_err",
+                    "type": "cfa_start_err",
                     "uuid": censorUuid(self.udid),
-                } ).Fatal("[WDA] Developer disk not mounted. Cannot start WDA")
+                } ).Fatal("[CFA] Developer disk not mounted. Cannot start CFA")
             }
             if strings.Contains( line, "'No app matches'" ) {
                 plog.WithFields( log.Fields{
-                    "type": "wda_start_err",
+                    "type": "cfa_start_err",
                     "uuid": censorUuid(self.udid),
                     "rawErr": line,
-                } ).Fatal("[WDA] Incorrect WDA bundle id")
+                } ).Fatal("[CFA] Incorrect CFA bundle id")
             }
             fmt.Fprintln( f, line )
         },
