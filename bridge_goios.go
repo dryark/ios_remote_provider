@@ -2,6 +2,8 @@ package main
 
 import (
     "fmt"
+    //"io"
+    //"net"
     "os"
     "os/exec"
     "regexp"
@@ -223,6 +225,48 @@ func (self *GIDev) tunnelOne( pair TunPair, onready func() ) {
     }
     proc_generic( self.procTracker, nil, &o )
 }
+
+/*func (self *GIDev) tunnel( pairs []TunPair, onready func() ) {
+    for _,pair := range( pairs ) {
+        l, err := net.Listen( "tcp", fmt.Sprintf( "0.0.0.0:%d", pair.from ) )
+        if err != nil { continue }
+        fmt.Printf("Listening on port %d ( to %d )\n", pair.from, pair.to )
+        
+        to := pair.to
+        from := pair.from
+        go func() {
+            for {
+                conn, err := l.Accept()
+                if err != nil { continue }
+                fmt.Printf("Incoming connection to port %d ( to %d )\n", from, to )
+                
+                beginIosProxy( conn, self.goIosDevice.DeviceID, uint16(to) )
+            }
+        }()
+    }
+    time.Sleep( time.Second )
+    onready()
+}
+
+func beginIosProxy( hostConn net.Conn, deviceID int, phonePort uint16 ) {
+    mux, err := ios.NewUsbMuxConnectionSimple()
+    if err != nil {
+        hostConn.Close()
+        return
+    }
+    err = mux.Connect( deviceID, phonePort )
+    if err != nil {
+        fmt.Printf("Failed to connect to device port %d\n", phonePort )
+        hostConn.Close()
+        return
+    }
+    fmt.Printf("Connected to device port %d\n", phonePort )
+    
+    deviceConn := mux.ReleaseDeviceConnection()
+
+    go func() { io.Copy( hostConn           , deviceConn.Reader() ) }()
+    go func() { io.Copy( deviceConn.Writer(), hostConn            ) }()
+}*/
 
 func (self *GIBridge) GetDevs( config *Config ) []string {
     json, _ := exec.Command( self.cli,
@@ -572,7 +616,7 @@ func (self *GIDev) cfaTidevice( onStart func(), onStop func(interface{}) ) {
         } ).Fatal("Could not open wda.log for writing")
     }
     
-    biPrefix := config.wdaPrefix
+    biPrefix := config.cfaPrefix
     bi := fmt.Sprintf( "%s.CFAgent.xctrunner", biPrefix )
     
     args := []string{

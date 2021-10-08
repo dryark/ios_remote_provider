@@ -125,6 +125,11 @@ func (self *AppStream) openControl() (mangos.Socket,bool,chan bool) {
     go func() {
         for {
             self.controlMutex.Lock()
+            if self.controlSocket == nil {
+                self.controlMutex.Unlock()
+                time.Sleep( time.Second * 1 )
+                continue
+            }
             err := self.controlSocket.Send([]byte(`{"action": "ping"}`))
             //var msg []byte
             if err == nil {
@@ -133,6 +138,7 @@ func (self *AppStream) openControl() (mangos.Socket,bool,chan bool) {
             }
             if err != nil {
                 fmt.Printf("video ping -> fail\n" )
+                self.controlMutex.Unlock()
                 controlStopChan <- true
                 break
             }

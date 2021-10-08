@@ -621,6 +621,9 @@ func (self *CFA) StartBroadcastStream( appName string, bid string, devConfig *CD
         self.ElClick( toSelector )
         
         startBtn := self.GetEl( "button", "Start Broadcast", true, 5 )
+        if startBtn == "" {
+            fmt.Printf("Error! Could not fetch Start Broadcast button\n")
+        }
         self.ElClick( startBtn )
     } else if method == "controlCenter" {
         fmt.Printf("Starting vidApp through control center\n")
@@ -631,7 +634,7 @@ func (self *CFA) StartBroadcastStream( appName string, bid string, devConfig *CD
         fmt.Printf("Selecting Screen Recording; el=%s\n", devEl )
         self.ElLongTouch( devEl )
         
-        appEl := self.GetEl( "any", appName, true, 5 )
+        appEl := self.GetEl( "staticText", appName, true, 5 )
         self.ElClick( appEl )
         
         startBtn := self.GetEl( "button", "Start Broadcast", true, 5 )
