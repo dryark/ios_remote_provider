@@ -532,6 +532,8 @@ func (self *GIDev) cfa( onStart func(), onStop func(interface{}) ) {
         if devCfaMethod != "" {
             if devCfaMethod == "tidevice" {
                 self.cfaTidevice( onStart, onStop )
+            } else if devCfaMethod == "iosif" {
+                self.cfaIosif( onStart, onStop )
             } else if devCfaMethod == "manual" {
                 onStart()
             } else {
@@ -549,7 +551,7 @@ func (self *GIDev) cfaGoIos( onStart func(), onStop func(interface{}) ) {
     if err != nil {
         log.WithFields( log.Fields{
             "type": "cfa_log_fail",
-        } ).Fatal("Could not open wda.log for writing")
+        } ).Fatal("Could not open cfa.log for writing")
     }
     
     config := self.bridge.config
@@ -613,7 +615,7 @@ func (self *GIDev) cfaTidevice( onStart func(), onStop func(interface{}) ) {
     if err != nil {
         log.WithFields( log.Fields{
             "type": "cfa_log_fail",
-        } ).Fatal("Could not open wda.log for writing")
+        } ).Fatal("Could not open cfa.log for writing")
     }
     
     biPrefix := config.cfaPrefix
@@ -655,6 +657,61 @@ func (self *GIDev) cfaTidevice( onStart func(), onStop func(interface{}) ) {
                 } ).Fatal("[CFA] Incorrect CFA bundle id")
             }
             fmt.Fprintln( f, line )
+        },
+        onStop: func( wrapper interface{} ) {
+            onStop( wrapper )
+        },
+    }
+    
+    proc_generic( self.procTracker, nil, &o )
+}
+
+func (self *GIDev) cfaIosif( onStart func(), onStop func(interface{}) ) {
+    f, err := os.OpenFile("cfa.log",
+        os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        log.WithFields( log.Fields{
+            "type": "cfa_log_fail",
+        } ).Fatal("Could not open cfa.log for writing")
+    }
+    
+    config := self.bridge.config
+    iosIfPath := config.iosIfPath
+    biPrefix := config.cfaPrefix
+    bi := fmt.Sprintf( "%s.CFAgent", biPrefix )
+    
+    args := []string{
+        "xctest",
+        bi,
+        "-id", self.udid,
+    }
+    
+    fmt.Fprintf( f, "Starting CFA via %s with args %s\n", iosIfPath, strings.Join( args, " " ) )
+    fmt.Printf( "Starting CFA via %s with args %s\n", iosIfPath, strings.Join( args, " " ) )
+    
+    o := ProcOptions {
+        procName: "cfa",
+        binary: "./" + iosIfPath,
+        args: args,
+        stderrHandler: func( line string, plog *log.Entry ) {
+            /*if strings.Contains( line, "configuration is unsupported" ) {
+                plog.Println( line )
+            }*/
+            fmt.Fprintf( f, "runcfa: %s\n", line )
+        },
+        stdoutHandler: func( line string, plog *log.Entry ) {
+            if strings.Contains(line, "NNG Ready") {
+                plog.WithFields( log.Fields{
+                    "type": "cfa_start",
+                    "uuid": censorUuid(self.udid),
+                } ).Info("[CFA] successfully started")
+                onStart()
+            }
+            if strings.Contains( line, "configuration is unsupported" ) {
+                plog.Println( line )
+            }
+            //fmt.Printf( "runcfa: %s\n", line )
+            fmt.Fprintf( f, "runcfa: %s\n", line )
         },
         onStop: func( wrapper interface{} ) {
             onStop( wrapper )

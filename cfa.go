@@ -5,6 +5,7 @@ import (
     //"io/ioutil"
     "net/http"
     "strings"
+    "os"
     "time"
     log "github.com/sirupsen/logrus"
     uj "github.com/nanoscopic/ujsonin/v2/mod"
@@ -454,9 +455,9 @@ func (self *CFA) ElForceTouch( elId string, pressure int ) {
     log.Info( "elForceTouch:", elId, pressure )
     json := fmt.Sprintf( `{
         action: "elForceTouch"
-        element: "%s"
-        "duration": 1
-        "pressure": %d
+        id: "%s"
+        time: 2
+        pressure: %d
     }`, elId, pressure )
     
     self.nngSocket.Send([]byte(json))
@@ -575,6 +576,7 @@ func (self *CFA) OpenControlCenter( controlCenterMethod string ) {
 func (self *CFA) StartBroadcastStream( appName string, bid string, devConfig *CDevice ) {
     method := devConfig.vidStartMethod
     ccMethod := devConfig.controlCenterMethod
+    ccRecordingMethod := devConfig.ccRecordingMethod
     
     sid := self.create_session( bid )
     if sid == "" {
@@ -632,7 +634,14 @@ func (self *CFA) StartBroadcastStream( appName string, bid string, devConfig *CD
         
         devEl := self.GetEl( "button", "Screen Recording", true, 5 )
         fmt.Printf("Selecting Screen Recording; el=%s\n", devEl )
-        self.ElLongTouch( devEl )
+        if ccRecordingMethod == "longTouch" {
+            self.ElLongTouch( devEl )
+        } else if ccRecordingMethod == "forceTouch" {
+            self.ElForceTouch( devEl, 1 )
+        } else {
+            fmt.Printf("ccRecordingMethod for a device must be either longTouch or forceTouch\n")
+            os.Exit(0)
+        }
         
         appEl := self.GetEl( "staticText", appName, true, 5 )
         self.ElClick( appEl )

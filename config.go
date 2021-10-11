@@ -18,6 +18,7 @@ type CDevice struct {
     wdaPort             int
     vidStartMethod      string
     controlCenterMethod string
+    ccRecordingMethod   string
 }
 
 type AlertConfig struct {
@@ -162,6 +163,7 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
             vidStartMethod := "app"
             widthNode := devNode.Get("uiWidth")
             cfaMethod := ""
+            ccRecordingMethod := "longTouch"
             if widthNode != nil {
                 uiWidth = widthNode.Int()
             }
@@ -185,6 +187,10 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
             if vidStartMethodNode != nil {
                 vidStartMethod = vidStartMethodNode.String()
             }
+            ccRecordingMethodNode := devNode.Get("ccRecordingMethod")
+            if ccRecordingMethodNode != nil {
+                ccRecordingMethod = ccRecordingMethodNode.String()
+            }
             
             dev := CDevice{
                 udid: udid,
@@ -194,6 +200,7 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
                 wdaPort: wdaPort,
                 vidStartMethod: vidStartMethod,
                 controlCenterMethod: controlCenterMethod,
+                ccRecordingMethod: ccRecordingMethod,
             }
             devs[ udid ] = dev
         } )

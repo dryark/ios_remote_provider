@@ -51,6 +51,8 @@ func main() {
         uc.OPT("-system","System element",uc.FLAG),
     )
     uclop.AddCmd( "clickEl", "Click a named element", runClickEl, clickButtonOpts )
+    uclop.AddCmd( "forceTouchEl", "Force touch a named element", runForceTouchEl, clickButtonOpts )
+    uclop.AddCmd( "longTouchEl", "Long touch a named element", runLongTouchEl, clickButtonOpts )
     
     runAppOpts := append( idOpt,
         uc.OPT("-name","App name",uc.REQ),
@@ -218,11 +220,20 @@ func cfaWrapped( cmd *uc.Cmd, appName string, doStuff func( cfa *CFA ) ) {
         id = idNode.String()
     }
     
+    if id == "" {
+        tracker := NewDeviceTracker( config, false, []string{} )
+        devs := tracker.bridge.GetDevs( config )
+        id = devs[0]
+    }
+    
     cfa,_,dev := cfaForDev( id )
+    fmt.Printf("id:[%s]\n", id )
     devConfig := config.devs[ id ]
+    fmt.Printf("%+v\n", devConfig )
     
     startChan := make( chan int )
     
+    fmt.Printf("devCfaMethod:%s\n", devConfig.cfaMethod )
     var stopChan chan bool
     if config.cfaMethod == "manual" || devConfig.cfaMethod == "manual" {
         fmt.Printf("Manual CFA; connecting...\n")
@@ -273,6 +284,24 @@ func runClickEl( cmd *uc.Cmd ) {
         system := cmd.Get("-system").Bool()
         btnName := cfa.GetEl( "any", label, system, 5 )
         cfa.ElClick( btnName )
+    } )
+}
+
+func runForceTouchEl( cmd *uc.Cmd ) {
+    cfaWrapped( cmd, "", func( cfa *CFA ) {
+        label := cmd.Get("-label").String()
+        system := cmd.Get("-system").Bool()
+        btnName := cfa.GetEl( "any", label, system, 5 )
+        cfa.ElForceTouch( btnName, 1 )
+    } )
+}
+
+func runLongTouchEl( cmd *uc.Cmd ) {
+    cfaWrapped( cmd, "", func( cfa *CFA ) {
+        label := cmd.Get("-label").String()
+        system := cmd.Get("-system").Bool()
+        btnName := cfa.GetEl( "any", label, system, 5 )
+        cfa.ElLongTouch( btnName )
     } )
 }
 
