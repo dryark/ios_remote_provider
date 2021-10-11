@@ -40,7 +40,12 @@ func main() {
     //uclop.AddCmd( "wda",       "Just run WDA",                     runWDA,        idOpt )
     uclop.AddCmd( "cfa",       "Just run CFA",                     runCFA,        idOpt )
     uclop.AddCmd( "winsize",   "Get device window size",           runWindowSize, idOpt )
-    uclop.AddCmd( "source",    "Get device xml source",            runSource,     idOpt )
+    
+    sourceOpts := append( idOpt,
+        uc.OPT("-bi","Bundle ID",0),
+    )
+    uclop.AddCmd( "source",    "Get device xml source",            runSource,     sourceOpts )
+        
     uclop.AddCmd( "alertinfo", "Get alert info",                   runAlertInfo,  idOpt )
     uclop.AddCmd( "islocked",  "Check if device screen is locked", runIsLocked,   idOpt )
     uclop.AddCmd( "unlock",    "Unlock device screen",             runUnlock,     idOpt )
@@ -53,6 +58,13 @@ func main() {
     uclop.AddCmd( "clickEl", "Click a named element", runClickEl, clickButtonOpts )
     uclop.AddCmd( "forceTouchEl", "Force touch a named element", runForceTouchEl, clickButtonOpts )
     uclop.AddCmd( "longTouchEl", "Long touch a named element", runLongTouchEl, clickButtonOpts )
+    uclop.AddCmd( "addRec", "Add Recording to Control Center", runAddRec, idOpt )
+    
+    appAtOpts := append( idOpt,
+        uc.OPT("-x","X",0),
+        uc.OPT("-y","Y",0),
+    )
+    uclop.AddCmd( "appAt", "App at point", runAppAt, appAtOpts )
     
     runAppOpts := append( idOpt,
         uc.OPT("-name","App name",uc.REQ),
@@ -204,8 +216,23 @@ func dotLoop( cmd *uc.Cmd, tracker *DeviceTracker ) {
 
 func runWindowSize( cmd *uc.Cmd ) {
     cfaWrapped( cmd, "", func( cfa *CFA ) {
-      wid, heg := cfa.WindowSize()
+        wid, heg := cfa.WindowSize()
         fmt.Printf("Width: %d, Height: %d\n", wid, heg )
+    } )
+}
+
+func runAddRec( cmd *uc.Cmd ) {
+    cfaWrapped( cmd, "", func( cfa *CFA ) {
+        cfa.AddRecordingToCC()
+    } )
+}
+
+func runAppAt( cmd *uc.Cmd ) {
+    cfaWrapped( cmd, "", func( cfa *CFA ) {
+        x := 100
+        y := 100
+        bi := cfa.AppAtPoint(x,y)
+        fmt.Printf("bi:%s\n",bi)
     } )
 }
 
@@ -312,8 +339,9 @@ func runRunApp( cmd *uc.Cmd ) {
 }
 
 func runSource( cmd *uc.Cmd ) {
+    bi := cmd.Get("-bi").String()
     cfaWrapped( cmd, "", func( cfa *CFA ) {
-        xml := cfa.Source()
+        xml := cfa.Source(bi)
         fmt.Println( xml )
     } )
 }

@@ -517,11 +517,36 @@ func (self *CFA) WindowSize() (int,int) {
     return width,height
 }
 
-func (self *CFA) Source() string {
-    self.nngSocket.Send([]byte(`{ action: "source" }`))
+func (self *CFA) Source(bi string) string {
+    biLine := ""
+    if bi != "" {
+        biLine = "bi: \"" + bi + "\""
+    }
+    json := fmt.Sprintf( `{
+        action: "source"
+        %s
+    }`, biLine )
+    self.nngSocket.Send([]byte(json))
     srcBytes, _ := self.nngSocket.Recv()
         
     return string(srcBytes)
+}
+
+func (self *CFA) ElPos(id string) (int,int,int,int) {
+    json := fmt.Sprintf( `{
+        action: "elPos"
+        id: "%s"
+    }`, id )
+    self.nngSocket.Send([]byte(json))
+    posJson, _ := self.nngSocket.Recv()
+    
+    root, _, _ := uj.ParseFull( posJson )
+    w := root.Get("w").Int()
+    h := root.Get("h").Int()
+    x := root.Get("x").Int()
+    y := root.Get("y").Int()
+    
+    return x,y,w,h
 }
 
 func (self *CFA) AlertInfo() ( uj.JNode, string ) {
@@ -541,6 +566,18 @@ func (self *CFA) AlertInfo() ( uj.JNode, string ) {
 
 func (self *CFA) SourceJson() string {
     self.nngSocket.Send([]byte(`{ action: "sourcej" }`))
+    srcBytes, _ := self.nngSocket.Recv()
+        
+    return string(srcBytes)
+}
+
+func (self *CFA) AppAtPoint( x int, y int ) string {
+    json := fmt.Sprintf( `{
+        action: "elementAtPoint"
+        x: %d
+        y: %d
+    }`, x, y )
+    self.nngSocket.Send([]byte(json))
     srcBytes, _ := self.nngSocket.Recv()
         
     return string(srcBytes)
@@ -571,6 +608,51 @@ func (self *CFA) OpenControlCenter( controlCenterMethod string ) {
         maxx := width - 1
         self.swipe( maxx, 0, maxx, 100, 0.1 )
     }    
+}
+
+func (self *CFA) swipeBack() {
+    width, height := self.WindowSize()
+    midy := height / 2
+    midx := width / 2
+    self.swipe( 1, midy, midx, midy, 0.1 )
+}
+
+func (self *CFA) AddRecordingToCC() {
+    self.create_session("com.apple.Preferences")
+    
+    self.AppChanged("com.apple.Preferences")
+    
+    i := 0
+    ccEl := ""
+    for {
+        ccEl = self.GetEl("staticText","Control Center", false, 1 )
+        if ccEl == "" {
+            self.swipeBack()
+            i++
+            if i>3 {
+                break
+            }
+            continue;
+        }
+        break
+    }
+    self.ElClick( ccEl )
+    
+    customizeEl := self.GetEl("staticText","Customize Controls", false, 2 )
+    self.ElClick( customizeEl )
+    
+    //x,y,w,h := self.ElPos( addRecEl )
+    //fmt.Printf("x:%d,y:%d,w:%d,h:%d\n",x,y,w,h)
+    
+    width, height := self.WindowSize()
+    midy := height / 2
+    midx := width / 2
+    
+    self.swipe( midx, midy, midx, midy-100, 0.1 )
+    
+    addRecEl := self.GetEl("button","Insert Screen Recording", false, 2 )
+    
+    self.ElClick( addRecEl )
 }
 
 func (self *CFA) StartBroadcastStream( appName string, bid string, devConfig *CDevice ) {
