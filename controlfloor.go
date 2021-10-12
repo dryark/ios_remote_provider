@@ -520,17 +520,18 @@ func (self *ControlFloor) notifyProvisionStopped( udid string ) {
     } )
 }
 
-/*func (self *ControlFloor) notifyWdaStopped( udid string ) {
+func (self *ControlFloor) notifyWdaStopped( udid string ) {
     self.baseNotify("WDA stop", udid, "wdaStopped", url.Values{
         "udid": {udid},
     } )
 }
 
-func (self *ControlFloor) notifyWdaStarted( udid string ) {
+func (self *ControlFloor) notifyWdaStarted( udid string, port int ) {
     self.baseNotify("WDA start", udid, "wdaStarted", url.Values{
         "udid": {udid},
+        "port": {strconv.Itoa(port)},
     } )
-}*/
+}
 
 func (self *ControlFloor) notifyCfaStopped( udid string ) {
     self.baseNotify("CFA stop", udid, "cfaStopped", url.Values{

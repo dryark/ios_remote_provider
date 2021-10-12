@@ -32,6 +32,18 @@
         keyMethod: "iohid"
         sanityCheck: true
     },
+    wda: {
+        lib: {
+            buildStyle: "Automatic" // or "Manual"
+            provisioningProfile: "" // always blank
+        }
+        runner: {
+            buildStyle: "Automatic" // or "Manual"
+            provisioningProfile: "" // specify when buildStyle is Manual
+        }
+        startMethod: "go-ios"
+        sanityCheck: true
+    },
     vidapp: {
         name: "CF Vidstream"
         bundleId: "vidstream"
@@ -54,10 +66,18 @@
             match: "invalid broadcast session"
             response: "OK"
         }
+        {
+            match: "Vidstream has stopped"
+            response: "OK"
+        }
     ]
     vidStartAlerts: [
         {
             match: "invalid broadcast session"
+            response: "OK"
+        }
+        {
+            match: "Vidstream has stopped"
             response: "OK"
         }
     ]

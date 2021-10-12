@@ -572,6 +572,9 @@ func (self *IIFDev) cfa( onStart func(), onStop func(interface{}) ) {
     }
 }
 
+func (self *IIFDev) wda( onStart func(), onStop func(interface{}) ) {
+}
+
 func (self *IIFDev) cfaGoIos( onStart func(), onStop func(interface{}) ) {
     f, err := os.OpenFile("cfa.log",
         os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

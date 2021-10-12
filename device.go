@@ -28,6 +28,9 @@ const (
     DEV_CFA_START
     DEV_CFA_START_ERR
     DEV_CFA_STOP
+    DEV_WDA_START
+    DEV_WDA_START_ERR
+    DEV_WDA_STOP
     DEV_VIDEO_START
     DEV_VIDEO_STOP
     DEV_ALERT_APPEAR
@@ -59,9 +62,9 @@ type Device struct {
     EventCh         chan DevEvent
     BackupCh        chan BackupEvent
     cfa             *CFA
-    //wda             *WDA
+    wda             *WDA
     cfaRunning      bool
-    //wdaRunning      bool
+    wdaRunning      bool
     devTracker      *DeviceTracker
     config          *Config
     devConfig       *CDevice
@@ -122,9 +125,9 @@ func ( self *Device ) isShuttingDown() bool {
 
 func ( self *Device ) releasePorts() {
     dt := self.devTracker
-    //if !self.wdaPortFixed {
-    //    dt.freePort( self.wdaPort )
-    //}
+    if !self.wdaPortFixed {
+        dt.freePort( self.wdaPort )
+    }
     dt.freePort( self.cfaNngPort )
     dt.freePort( self.vidPort )
     dt.freePort( self.vidLogPort )
@@ -188,6 +191,11 @@ func (self *Device) onCfaReady() {
     } )
 }
 
+func (self *Device) onWdaReady() {
+    self.wdaRunning = true
+    self.cf.notifyWdaStarted( self.udid, self.wdaPort )
+}
+
 func (self *Device) startEventLoop() {
     go func() {
         DEVEVENTLOOP:
@@ -199,6 +207,8 @@ func (self *Device) startEventLoop() {
                     break DEVEVENTLOOP
                 } else if action == DEV_CFA_START { // CFA started
                     self.onCfaReady()
+                } else if action == DEV_WDA_START { // CFA started
+                    self.onWdaReady()
                 } else if action == DEV_CFA_START_ERR {
                     fmt.Printf("Error starting/connecting to CFA.\n")
                     self.shutdown()
@@ -206,6 +216,9 @@ func (self *Device) startEventLoop() {
                 } else if action == DEV_CFA_STOP { // CFA stopped
                     self.cfaRunning = false
                     self.cf.notifyCfaStopped( self.udid )
+                } else if action == DEV_CFA_STOP { // CFA stopped
+                    self.wdaRunning = false
+                    self.cf.notifyWdaStopped( self.udid )
                 } else if action == DEV_VIDEO_START { // first video frame
                     self.cf.notifyVideoStarted( self.udid )
                     self.onFirstFrame( &event )
@@ -319,10 +332,7 @@ func (self *Device) devAppChanged( bundleId string ) {
 func (self *Device) startProcs() {
     // Start CFA
     self.cfa = NewCFA( self.config, self.devTracker, self )
-    
-    // Start WDA
-    //self.wda = NewWDA( self.config, self.devTracker, self )
-    
+        
     if self.config.cfaMethod == "manual" {
         //self.cfa.startCfaNng()
     }
@@ -413,6 +423,9 @@ func (self *Device) startProcs2() {
         self.udid,
         self )
     self.vidStreamer.mainLoop()
+    
+    // Start WDA
+    self.wda = NewWDA( self.config, self.devTracker, self )
 }
 
 func (self *Device) vidAppIsAlive() bool {
@@ -428,13 +441,13 @@ func (self *Device) enableVideo() {
     vidPid := self.bridge.GetPid( self.config.vidAppExtBid )
     
     // if it is running, go ahead and use it
-    /*if vidPid != 0 {
+    if vidPid != 0 {
         self.vidMode = VID_APP
         return
-    }*/
+    }
     
     // If it is running, kill it
-    if vidPid != 0 {
+    /*if vidPid != 0 {
         self.bridge.Kill( vidPid )
         
         // Kill off replayd in case it is stuck
@@ -442,7 +455,7 @@ func (self *Device) enableVideo() {
         if rp_id != 0 {
             self.bridge.Kill( rp_id )
         }
-    }
+    }*/
     
     // if video app is not running, check if it is installed
     

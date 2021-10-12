@@ -603,10 +603,10 @@ func (self *CFA) OpenControlCenter( controlCenterMethod string ) {
     if controlCenterMethod == "bottomUp" {
         midx := width / 2
         maxy := height - 1
-        self.swipe( midx, maxy, midx, maxy - 100, 0.1 )
+        self.swipe( midx, maxy, midx, maxy - 200, 0.2 )
     } else if controlCenterMethod == "topDown" {
         maxx := width - 1
-        self.swipe( maxx, 0, maxx, 100, 0.1 )
+        self.swipe( maxx, 0, maxx, 200, 0.2 )
     }    
 }
 
@@ -711,6 +711,7 @@ func (self *CFA) StartBroadcastStream( appName string, bid string, devConfig *CD
         self.ElClick( startBtn )
     } else if method == "controlCenter" {
         fmt.Printf("Starting vidApp through control center\n")
+        time.Sleep( time.Second * 2 )
         self.OpenControlCenter( ccMethod )
         //self.Source()
         

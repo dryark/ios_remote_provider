@@ -544,6 +544,24 @@ func (self *GIDev) cfa( onStart func(), onStop func(interface{}) ) {
         }
     }
 }
+func (self *GIDev) wda( onStart func(), onStop func(interface{}) ) {
+    if self.config == nil {
+        //self.wdaGoIos( onStart, onStop )
+    } else {
+        devWdaMethod := self.config.wdaMethod
+        if devWdaMethod != "" {
+            if devWdaMethod == "tidevice" {
+                self.wdaTidevice( onStart, onStop )
+            } else if devWdaMethod == "iosif" {
+                self.wdaIosif( onStart, onStop )
+            } else if devWdaMethod == "manual" {
+                onStart()
+            } else if devWdaMethod == "go-ios" {
+                self.wdaGoIos( onStart, onStop )
+            }
+        }
+    }
+}
 
 func (self *GIDev) cfaGoIos( onStart func(), onStop func(interface{}) ) {
     f, err := os.OpenFile("cfa.log",
@@ -591,6 +609,61 @@ func (self *GIDev) cfaGoIos( onStart func(), onStop func(interface{}) ) {
                 plog.Println( line )
             }
             fmt.Fprintf( f, "runcfa: %s\n", line )
+        },
+        onStop: func( wrapper interface{} ) {
+            onStop( wrapper )
+        },
+    }
+    
+    proc_generic( self.procTracker, nil, &o )
+}
+
+func (self *GIDev) wdaGoIos( onStart func(), onStop func(interface{}) ) {
+    f, err := os.OpenFile("wda.log",
+        os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        log.WithFields( log.Fields{
+            "type": "wda_log_fail",
+        } ).Fatal("Could not open wda.log for writing")
+    }
+    
+    config := self.bridge.config
+    biPrefix := config.wdaPrefix
+    bi := fmt.Sprintf( "%s.WebDriverAgentRunner.xctrunner", biPrefix )
+    
+    args := []string{
+        "runwda",
+        "--bundleid", bi,
+        "--testrunnerbundleid", bi,
+        "--xctestconfig", "WebDriverAgentRunner.xctest",
+        "--udid", self.udid,
+    }
+    
+    fmt.Fprintf( f, "Starting WDA via %s with args %s\n", "bin/go-ios", strings.Join( args, " " ) )
+    fmt.Printf( "Starting WDA via %s with args %s\n", "bin/go-ios", strings.Join( args, " " ) )
+    
+    o := ProcOptions {
+        procName: "wda",
+        binary: self.bridge.cli,
+        args: args,
+        stdoutHandler: func( line string, plog *log.Entry ) {
+            if strings.Contains( line, "configuration is unsupported" ) {
+                plog.Println( line )
+            }
+            fmt.Fprintf( f, "runwda: %s\n", line )
+        },
+        stderrHandler: func( line string, plog *log.Entry ) {
+            if strings.Contains(line, "NNG Ready") {
+                plog.WithFields( log.Fields{
+                    "type": "wda_start",
+                    "uuid": censorUuid(self.udid),
+                } ).Info("[WDA] successfully started")
+                onStart()
+            }
+            if strings.Contains( line, "configuration is unsupported" ) {
+                plog.Println( line )
+            }
+            fmt.Fprintf( f, "runwda: %s\n", line )
         },
         onStop: func( wrapper interface{} ) {
             onStop( wrapper )
@@ -666,6 +739,72 @@ func (self *GIDev) cfaTidevice( onStart func(), onStop func(interface{}) ) {
     proc_generic( self.procTracker, nil, &o )
 }
 
+func (self *GIDev) wdaTidevice( onStart func(), onStop func(interface{}) ) {
+    config := self.bridge.config
+    tiPath := config.tidevicePath
+    
+    if tiPath == "" {
+        log.WithFields( log.Fields{
+            "type":  "tidevice_path_unset",
+        } ).Fatal("tidevice path is unknown. Run `make usetidevice` to correct")
+    }
+    
+    f, err := os.OpenFile("wda.log",
+        os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        log.WithFields( log.Fields{
+            "type": "wda_log_fail",
+        } ).Fatal("Could not open wda.log for writing")
+    }
+    
+    biPrefix := config.cfaPrefix
+    bi := fmt.Sprintf( "%s.WebDriverAgentRunner.xctrunner", biPrefix )
+    
+    args := []string{
+        "-u", self.udid,
+        "xctest",
+        "-B", bi,
+    }
+    
+    fmt.Fprintf( f, "Starting WDA via %s with args %s\n", tiPath, strings.Join( args, " " ) )
+    fmt.Printf( "Starting WDA via %s with args %s\n", tiPath, strings.Join( args, " " ) )
+    
+    o := ProcOptions {
+        procName: "wda",
+        binary: tiPath,
+        args: args,
+        stderrHandler: func( line string, plog *log.Entry ) {
+            if strings.Contains(line, " pid: ") {
+                plog.WithFields( log.Fields{
+                    "type": "cfa_start",
+                    "uuid": censorUuid(self.udid),
+                } ).Info("[WDA] successfully started - waiting 5 seconds")
+                time.Sleep( time.Second * 5 )
+                onStart()
+            }
+            if strings.Contains( line, "have to mount the Developer disk image" ) {
+                plog.WithFields( log.Fields{
+                    "type": "wda_start_err",
+                    "uuid": censorUuid(self.udid),
+                } ).Fatal("[WDA] Developer disk not mounted. Cannot start WDA")
+            }
+            if strings.Contains( line, "'No app matches'" ) {
+                plog.WithFields( log.Fields{
+                    "type": "wda_start_err",
+                    "uuid": censorUuid(self.udid),
+                    "rawErr": line,
+                } ).Fatal("[WDA] Incorrect WDA bundle id")
+            }
+            fmt.Fprintln( f, line )
+        },
+        onStop: func( wrapper interface{} ) {
+            onStop( wrapper )
+        },
+    }
+    
+    proc_generic( self.procTracker, nil, &o )
+}
+
 func (self *GIDev) cfaIosif( onStart func(), onStop func(interface{}) ) {
     f, err := os.OpenFile("cfa.log",
         os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -712,6 +851,60 @@ func (self *GIDev) cfaIosif( onStart func(), onStop func(interface{}) ) {
             }
             //fmt.Printf( "runcfa: %s\n", line )
             fmt.Fprintf( f, "runcfa: %s\n", line )
+        },
+        onStop: func( wrapper interface{} ) {
+            onStop( wrapper )
+        },
+    }
+    
+    proc_generic( self.procTracker, nil, &o )
+}
+
+func (self *GIDev) wdaIosif( onStart func(), onStop func(interface{}) ) {
+    f, err := os.OpenFile("wda.log",
+        os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        log.WithFields( log.Fields{
+            "type": "wda_log_fail",
+        } ).Fatal("Could not open wda.log for writing")
+    }
+    
+    config := self.bridge.config
+    iosIfPath := config.iosIfPath
+    biPrefix := config.wdaPrefix
+    bi := fmt.Sprintf( "%s.WebDriverAgentRunner", biPrefix )
+    
+    args := []string{
+        "xctest",
+        bi,
+        "-id", self.udid,
+    }
+    
+    fmt.Fprintf( f, "Starting WDA via %s with args %s\n", iosIfPath, strings.Join( args, " " ) )
+    fmt.Printf( "Starting WDA via %s with args %s\n", iosIfPath, strings.Join( args, " " ) )
+    
+    o := ProcOptions {
+        procName: "wda",
+        binary: "./" + iosIfPath,
+        args: args,
+        stderrHandler: func( line string, plog *log.Entry ) {
+            /*if strings.Contains( line, "configuration is unsupported" ) {
+                plog.Println( line )
+            }*/
+            fmt.Fprintf( f, "runwda: %s\n", line )
+        },
+        stdoutHandler: func( line string, plog *log.Entry ) {
+            if strings.Contains(line, "ServerURLHere") {
+                plog.WithFields( log.Fields{
+                    "type": "wda_start",
+                    "uuid": censorUuid(self.udid),
+                } ).Info("[WDA] successfully started")
+                onStart()
+            }
+            if strings.Contains( line, "configuration is unsupported" ) {
+                plog.Println( line )
+            }
+            fmt.Fprintf( f, "runwda: %s\n", line )
         },
         onStop: func( wrapper interface{} ) {
             onStop( wrapper )

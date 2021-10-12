@@ -15,6 +15,7 @@ type CDevice struct {
     uiWidth             int
     uiHeight            int
     cfaMethod           string
+    wdaMethod           string
     wdaPort             int
     vidStartMethod      string
     controlCenterMethod string
@@ -40,6 +41,7 @@ type Config struct {
     cfaPath      string
     tidevicePath string
     cfaMethod    string
+    wdaMethod    string
     cfaKeyMethod string
     wdaPrefix    string
     cfaPrefix    string
@@ -98,9 +100,10 @@ func NewConfig( configPath string, defaultsPath string, calculatedPath string ) 
     config.wdaPath    = GetStr(  root, "bin_paths.wda" )
     config.cfaPath    = GetStr(  root, "bin_paths.cfa" )
     config.cfaMethod  = GetStr(  root, "cfa.startMethod" )
+    config.wdaMethod  = GetStr(  root, "wda.startMethod" )
     config.cfaKeyMethod    = GetStr( root, "cfa.keyMethod" )
     config.cfaPrefix       = GetStr( root, "cfa.bundleIdPrefix" )
-    //config.wdaPrefix       = GetStr( root, "wda.bundleIdPrefix" )
+    config.wdaPrefix       = GetStr( root, "wda.bundleIdPrefix" )
     config.cfaSanityCheck  = GetBool( root, "cfa.sanityCheck" )
     config.vidAppName      = GetStr( root, "vidapp.name" )
     config.vidAppBid       = GetStr( root, "vidapp.bundleId" )
@@ -163,6 +166,7 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
             vidStartMethod := "app"
             widthNode := devNode.Get("uiWidth")
             cfaMethod := ""
+            wdaMethod := ""
             ccRecordingMethod := "longTouch"
             if widthNode != nil {
                 uiWidth = widthNode.Int()
@@ -178,6 +182,10 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
             cfaMethodNode := devNode.Get("cfaMethod")
             if cfaMethodNode != nil {
                 cfaMethod = cfaMethodNode.String()
+            }
+            wdaMethodNode := devNode.Get("wdaMethod")
+            if wdaMethodNode != nil {
+                wdaMethod = cfaMethodNode.String()
             }
             methodNode := devNode.Get("controlCenterMethod")
             if methodNode != nil {
@@ -197,6 +205,7 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
                 uiWidth: uiWidth,
                 uiHeight: uiHeight,
                 cfaMethod: cfaMethod,
+                wdaMethod: wdaMethod,
                 wdaPort: wdaPort,
                 vidStartMethod: vidStartMethod,
                 controlCenterMethod: controlCenterMethod,
