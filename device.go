@@ -441,13 +441,13 @@ func (self *Device) enableVideo() {
     vidPid := self.bridge.GetPid( self.config.vidAppExtBid )
     
     // if it is running, go ahead and use it
-    if vidPid != 0 {
+    /*if vidPid != 0 {
         self.vidMode = VID_APP
         return
-    }
+    }*/
     
     // If it is running, kill it
-    /*if vidPid != 0 {
+    if vidPid != 0 {
         self.bridge.Kill( vidPid )
         
         // Kill off replayd in case it is stuck
@@ -455,7 +455,7 @@ func (self *Device) enableVideo() {
         if rp_id != 0 {
             self.bridge.Kill( rp_id )
         }
-    }*/
+    }
     
     // if video app is not running, check if it is installed
     
