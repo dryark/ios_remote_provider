@@ -608,6 +608,16 @@ func (self *GIDev) cfaGoIos( onStart func(), onStop func(interface{}) ) {
             if strings.Contains( line, "configuration is unsupported" ) {
                 plog.Println( line )
             }
+            if strings.Contains( line, "Unable to launch" ) && strings.Contains( line, "invalid code signature" ) {
+                args := []string{
+                    "install",
+                    "--path", "bin/cfa/Debug-iphoneos/CFAgent-Runner.app",
+                    "--udid", self.udid,
+                }
+                //args = append( args, names... )
+                fmt.Printf("Running %s %s\n", self.bridge.cli, args );
+                /*json, _ := */exec.Command( self.bridge.cli, args... ).Output()
+            }
             fmt.Fprintf( f, "runcfa: %s\n", line )
         },
         onStop: func( wrapper interface{} ) {
