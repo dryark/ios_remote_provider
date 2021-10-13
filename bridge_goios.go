@@ -663,7 +663,7 @@ func (self *GIDev) wdaGoIos( onStart func(), onStop func(interface{}) ) {
             fmt.Fprintf( f, "runwda: %s\n", line )
         },
         stderrHandler: func( line string, plog *log.Entry ) {
-            if strings.Contains(line, "NNG Ready") {
+            if strings.Contains(line, "ServerURLHere") {
                 plog.WithFields( log.Fields{
                     "type": "wda_start",
                     "uuid": censorUuid(self.udid),
