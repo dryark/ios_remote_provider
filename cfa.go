@@ -706,7 +706,10 @@ func (self *CFA) StartBroadcastStream( appName string, bid string, devConfig *CD
         
         startBtn := self.GetEl( "button", "Start Broadcast", true, 5 )
         if startBtn == "" {
-            fmt.Printf("Error! Could not fetch Start Broadcast button\n")
+            startBtn := self.GetEl( "button", "Start Broadcast", false, 5 )
+            if startBtn == "" {
+                fmt.Printf("Error! Could not fetch Start Broadcast button\n")
+            }
         }
         self.ElClick( startBtn )
     } else if method == "controlCenter" {
