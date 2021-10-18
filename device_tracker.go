@@ -264,6 +264,21 @@ func (self *DeviceTracker) onDeviceConnect( uuid string, bdev BridgeDev ) (*Devi
     } ).Info("Device Info")
     
     dev.info = devInfo
+    dev.iosVersion = devInfo["ProductVersion"]
+    versionParts := strings.Split( ".", dev.iosVersion )
+    
+    majorStr := versionParts[0]
+    dev.versionParts[0],_ = strconv.Atoi( majorStr )
+    
+    if len( versionParts ) > 1 {
+        medStr := versionParts[1]
+        dev.versionParts[1],_ = strconv.Atoi( medStr )
+    }
+    
+    if len( versionParts ) > 2 {
+        minStr := versionParts[2]
+        dev.versionParts[2],_ = strconv.Atoi( minStr )
+    }
     
     self.DevMap[ uuid ] = dev
     return dev

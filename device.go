@@ -52,6 +52,7 @@ type Device struct {
     backupVideoPort int
     //mjpegVideoPort  int
     iosVersion      string
+    versionParts    []int
     productType     string
     productNum      string
     vidWidth        int
@@ -105,6 +106,7 @@ func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev Bri
         BackupCh:        make( chan BackupEvent ),
         bridge:          bdev,
         cfaRunning:      false,
+        versionParts:    []int{0,0,0},
         //wdaRunning:      false,
     }
     if devConfig, ok := config.devs[udid]; ok {
