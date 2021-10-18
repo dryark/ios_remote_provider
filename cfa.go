@@ -785,6 +785,8 @@ func (self *CFA) AppChanged( bundleId string ) {
         bundleId: "%s"
     }`, bundleId )
     
-    self.nngSocket.Send([]byte(json))
-    self.nngSocket.Recv()
+    if self.nngSocket != nil {
+        self.nngSocket.Send([]byte(json))
+        self.nngSocket.Recv()
+    }
 }

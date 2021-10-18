@@ -187,7 +187,7 @@ func readDevs( root uj.JNode ) ( map[string]CDevice ) {
             }
             wdaMethodNode := devNode.Get("wdaMethod")
             if wdaMethodNode != nil {
-                wdaMethod = cfaMethodNode.String()
+                wdaMethod = wdaMethodNode.String()
             }
             methodNode := devNode.Get("controlCenterMethod")
             if methodNode != nil {
