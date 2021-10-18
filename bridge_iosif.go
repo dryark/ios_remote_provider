@@ -339,6 +339,10 @@ func (self *IIFDev) InstallApp( appPath string ) bool {
   return false      
 }
 
+func (self *IIFDev) LaunchApp( bundleId string ) bool {
+    return false
+}
+
 func (self *IIFDev) info( names []string ) map[string]string {
   mapped := make( map[string]string )
   //fmt.Printf("udid for info: %s\n", self.udid )

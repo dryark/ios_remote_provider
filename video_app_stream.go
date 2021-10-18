@@ -282,6 +282,16 @@ func (self *AppStream) mainLoop() {
                 // If not restart it
                 if !alive {
                     fmt.Printf("Video broadcast died. Restarting\n")
+                    config := self.device.config
+                    res := self.device.bridge.LaunchApp( config.vidAppBidPrefix + "." + config.vidAppBid ) // com.dryark.vidstream
+                    if res == false {
+                        appPath := "bin/vidstream/vidstream.app"
+                        if _, err := os.Stat(appPath); err == nil {
+                            self.device.bridge.InstallApp( appPath )
+                        } else if os.IsNotExist(err) {
+                            // TODO: panic.
+                        }
+                    }
                     self.device.justStartBroadcast()
                     self.controlSocket = nil
                     imgSocket = nil

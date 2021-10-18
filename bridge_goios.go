@@ -354,6 +354,19 @@ func (self *GIDev) InstallApp( appPath string ) bool {
     return false      
 }
 
+func (self *GIDev) LaunchApp( bundleId string ) bool {
+    output, _ := exec.Command( self.bridge.cli,
+        []string{
+            "launch",
+            bundleId,
+            "--udid", self.udid,
+        }... ).Output()
+    if strings.Contains( string(output), "msg\":\"Process launched" ) {
+        return true
+    }
+    return false
+}
+
 func (self *GIDev) info( names []string ) map[string]string {
     mapped := make( map[string]string )
     //fmt.Printf("udid for info: %s\n", self.udid )

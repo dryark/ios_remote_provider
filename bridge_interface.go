@@ -53,6 +53,7 @@ type BridgeDev interface {
   GetPid( appname string ) uint64
   AppInfo( bundleId string ) uj.JNode
   InstallApp( appPath string ) bool
+  LaunchApp( bundleId string ) bool
   NewSyslogMonitor( handleLogItem func( msg string, app string ) )
   Kill( pid uint64 )
   SetConfig( devConfig *CDevice )
