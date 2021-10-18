@@ -2,10 +2,12 @@ package main
 
 import (
     "fmt"
+    "net/http"
     "os"
     "os/signal"
     //"runtime/pprof"
     "strings"
+    "strconv"
     "syscall"
     "time"
     log "github.com/sirupsen/logrus"
@@ -40,6 +42,8 @@ func main() {
     //uclop.AddCmd( "wda",       "Just run WDA",                     runWDA,        idOpt )
     uclop.AddCmd( "cfa",       "Just run CFA",                     runCFA,        idOpt )
     uclop.AddCmd( "winsize",   "Get device window size",           runWindowSize, idOpt )
+    uclop.AddCmd( "screenshot","Get screenshot",                   runScreenshot, idOpt )
+    uclop.AddCmd( "shottest",  "Test video via screenshots",       runShotTest,   idOpt )
     
     sourceOpts := append( idOpt,
         uc.OPT("-bi","Bundle ID",0),
@@ -289,10 +293,10 @@ func cfaWrapped( cmd *uc.Cmd, appName string, doStuff func( cfa *CFA ) ) {
     fmt.Printf("appName = %s\n", appName)
     if appName == "" {
         fmt.Printf("Ensuring session\n")
-        cfa.ensureSession()
+        //cfa.ensureSession()
         fmt.Printf("Ensured session\n")
     } else {
-        cfa.create_session( appName )
+        //cfa.create_session( appName )
     }
     
     doStuff( cfa )
@@ -344,6 +348,62 @@ func runSource( cmd *uc.Cmd ) {
         xml := cfa.Source(bi)
         fmt.Println( xml )
     } )
+}
+
+func runScreenshot( cmd *uc.Cmd ) {
+    cfaWrapped( cmd, "", func( cfa *CFA ) {
+        bytes := cfa.Screenshot()
+        //os.Stdout.Write( bytes )
+        f, _ := os.Create( "test.jpg" )
+        f.Write( bytes )
+        fmt.Printf("Write %d bytes\n", len( bytes ) )
+    } )
+}
+
+func runShotTest( cmd *uc.Cmd ) {
+    cfaWrapped( cmd, "", shotServer )
+}
+
+func shotServer( cfa *CFA ) {
+    shotClosure := func( w http.ResponseWriter, r *http.Request ) {
+        shotImg( w, r, cfa )
+    }
+    http.HandleFunc( "/shot", shotClosure )
+    http.HandleFunc( "/", shotRoot )
+    http.ListenAndServe( "0.0.0.0:8081", nil )
+}
+
+func shotRoot( w http.ResponseWriter, r *http.Request ) {
+    w.Write( []byte(`
+    <html>
+    <head>
+      <script>
+        var img;
+        var i = 0;
+        function go() {
+          img = document.getElementById("img");
+          setTimeout(updateImage,200);
+        }
+        function updateImage() {
+          img.src = "/shot#" + (i++);
+          setTimeout(updateImage,200);
+        }
+      </script>
+    </head>
+    <body onload="go()">
+      <img id="img" src='/shot'/>
+    </body>
+    </html>
+    `))
+}
+
+func shotImg( w http.ResponseWriter, r *http.Request, cfa *CFA ) {
+    bytes := cfa.Screenshot()
+    w.Header().Set("Content-Type", "image/jpeg")
+    w.Header().Set("Content-Length", strconv.Itoa( len( bytes ) ) )
+    w.Header().Set("Cache-Control", "no-cache, must-revalidate" )
+
+    w.Write( bytes )
 }
 
 func runAlertInfo( cmd *uc.Cmd ) {

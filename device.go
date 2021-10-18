@@ -45,11 +45,12 @@ type Device struct {
     wdaPort         int
     wdaPortFixed    bool
     cfaNngPort      int
+    cfaNngPort2     int
     vidPort         int
     vidControlPort  int
     vidLogPort      int
     backupVideoPort int
-    mjpegVideoPort  int
+    //mjpegVideoPort  int
     iosVersion      string
     productType     string
     productNum      string
@@ -87,12 +88,13 @@ func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev Bri
         //wdaPort:         devTracker.getPort(),
         wdaPortFixed:    false,
         cfaNngPort:      devTracker.getPort(),
+        cfaNngPort2:     devTracker.getPort(),
         vidPort:         devTracker.getPort(),
         vidLogPort:      devTracker.getPort(),
         vidMode:         VID_NONE,
         vidControlPort:  devTracker.getPort(),
         backupVideoPort: devTracker.getPort(),
-        mjpegVideoPort:  devTracker.getPort(),
+        //mjpegVideoPort:  devTracker.getPort(),
         backupActive:    false,
         config:          config,
         udid:            udid,
@@ -129,11 +131,12 @@ func ( self *Device ) releasePorts() {
         dt.freePort( self.wdaPort )
     }
     dt.freePort( self.cfaNngPort )
+    dt.freePort( self.cfaNngPort2 )
     dt.freePort( self.vidPort )
     dt.freePort( self.vidLogPort )
     dt.freePort( self.vidControlPort )
     dt.freePort( self.backupVideoPort )
-    dt.freePort( self.mjpegVideoPort )
+    //dt.freePort( self.mjpegVideoPort )
 }
 
 func ( self *Device ) startProc( proc *GenericProc ) {
@@ -499,6 +502,9 @@ func (self *Device) justStartBroadcast() {
 
 func (self *Device) startVidStream() { // conn *ws.Conn ) {
     conn := self.cf.connectVidChannel( self.udid )
+    
+    imgData := self.cfa.Screenshot()
+    conn.WriteMessage( ws.BinaryMessage, imgData )
     
     var controlChan chan int
     if self.vidStreamer != nil {

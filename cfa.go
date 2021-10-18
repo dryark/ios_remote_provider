@@ -26,7 +26,9 @@ type CFA struct {
     transport     *http.Transport
     client        *http.Client
     nngPort       int
+    nngPort2      int
     nngSocket     mangos.Socket
+    nngSocket2    mangos.Socket
     disableUpdate bool
     sessionMade   bool
 }
@@ -59,6 +61,7 @@ func NewCFANoStart( config *Config, devTracker *DeviceTracker, dev *Device ) (*C
     self := CFA{
         udid:          dev.udid,
         nngPort:       dev.cfaNngPort,
+        nngPort2:      dev.cfaNngPort2,
         devTracker:    devTracker,
         dev:           dev,
         config:        config,
@@ -117,8 +120,8 @@ func NewCFANoStart( config *Config, devTracker *DeviceTracker, dev *Device ) (*C
     return &self
 }
 
-func (self *CFA) dialCfaNng() ( mangos.Socket, int, chan bool ) {
-    spec := fmt.Sprintf( "tcp://127.0.0.1:%d", self.nngPort )
+func (self *CFA) dialNng( port int ) ( mangos.Socket, int, chan bool ) {
+    spec := fmt.Sprintf( "tcp://127.0.0.1:%d", port )
     
     var err error
     var reqSock mangos.Socket
@@ -156,15 +159,24 @@ func (self *CFA) dialCfaNng() ( mangos.Socket, int, chan bool ) {
 func (self *CFA) startCfaNng( onready func( int, chan bool ) ) {
     pairs := []TunPair{
         TunPair{ from: self.nngPort, to: 8101 },
+        TunPair{ from: self.nngPort2, to: 8102 },
     }
     
     self.dev.bridge.tunnel( pairs, func() {
-        nngSocket, err, stopChan := self.dialCfaNng()
+        nngSocket, err, stopChan := self.dialNng( self.nngPort )
         if err != 0 {
             onready( err, nil )
             return
         }
         self.nngSocket = nngSocket
+        
+        nngSocket2, err, _ := self.dialNng( self.nngPort2 )
+        if err != 0 {
+            onready( err, nil )
+            return
+        }
+        self.nngSocket2 = nngSocket2
+        
         self.create_session("")
         if onready != nil {
             onready( 0, stopChan )            
@@ -175,6 +187,7 @@ func (self *CFA) startCfaNng( onready func( int, chan bool ) ) {
 func (self *CFA) start( started func( int, chan bool ) ) {
     pairs := []TunPair{
         TunPair{ from: self.nngPort, to: 8101 },
+        TunPair{ from: self.nngPort2, to: 8102 },
     }
     
     self.dev.bridge.tunnel( pairs, func() {
@@ -191,14 +204,25 @@ func (self *CFA) start( started func( int, chan bool ) ) {
                     "port": self.nngPort,
                 } ).Debug("CFA - Dialing NNG")
                 
-                nngSocket, err, stopChan := self.dialCfaNng()
-                if err == 0 {
+                nngSocket, err1, stopChan := self.dialNng(self.nngPort)
+                if err1 == 0 {
                     self.nngSocket = nngSocket
                     log.WithFields( log.Fields{
                         "type": "cfa_nng_dialed",
                         "port": self.nngPort,
                     } ).Debug("WDA - NNG Dialed")
-                } else {
+                }
+                
+                nngSocket, err2, stopChan := self.dialNng(self.nngPort2)
+                if err2 == 0 {
+                    self.nngSocket2 = nngSocket
+                    log.WithFields( log.Fields{
+                        "type": "cfa_nng2_dialed",
+                        "port": self.nngPort2,
+                    } ).Debug("WDA - NNG2 Dialed")
+                }
+                
+                if err1 != 0 || err2 != 0 {
                     fmt.Printf("Error starting/connecting to CFA.\n")
                     self.dev.EventCh <- DevEvent{ action: DEV_CFA_START_ERR }
                     return
@@ -550,6 +574,7 @@ func (self *CFA) ElPos(id string) (int,int,int,int) {
 }
 
 func (self *CFA) AlertInfo() ( uj.JNode, string ) {
+    self.ensureSession()
     self.nngSocket.Send([]byte(`{ action: "alertInfo" }`))
     jsonBytes, _ := self.nngSocket.Recv()
     fmt.Printf("alertInfo res: %s\n", string(jsonBytes) )
@@ -567,8 +592,15 @@ func (self *CFA) AlertInfo() ( uj.JNode, string ) {
 func (self *CFA) SourceJson() string {
     self.nngSocket.Send([]byte(`{ action: "sourcej" }`))
     srcBytes, _ := self.nngSocket.Recv()
-        
+    
     return string(srcBytes)
+}
+
+func (self *CFA) Screenshot() []byte {
+    self.nngSocket2.Send([]byte(`{ action: "screenshot2" }`))
+    imgBytes, _ := self.nngSocket2.Recv()
+    
+    return imgBytes
 }
 
 func (self *CFA) AppAtPoint( x int, y int ) string {
@@ -579,7 +611,7 @@ func (self *CFA) AppAtPoint( x int, y int ) string {
     }`, x, y )
     self.nngSocket.Send([]byte(json))
     srcBytes, _ := self.nngSocket.Recv()
-        
+    
     return string(srcBytes)
 }
 
