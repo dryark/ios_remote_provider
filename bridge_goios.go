@@ -171,6 +171,15 @@ func (self *GIDev) setProcTracker( procTracker ProcTracker ) {
 }
 
 func (self *GIDev) tunnel( pairs []TunPair, onready func() ) {
+    tunnelMethod := self.config.tunnelMethod
+    if tunnelMethod == "go-ios" {
+        self.tunnelGoIos( pairs, onready )
+    } else if tunnelMethod == "iosif" {
+        self.tunnelIosif( pairs, onready )
+    }
+}
+
+func (self *GIDev) tunnelGoIos( pairs []TunPair, onready func() ) {
     count := len( pairs )
     sofar := 0
     done := make( chan bool )
@@ -224,6 +233,47 @@ func (self *GIDev) tunnelOne( pair TunPair, onready func() ) {
         },
     }
     proc_generic( self.procTracker, nil, &o )
+}
+
+func (self *GIDev) tunnelIosif( pairs []TunPair, onready func() ) {
+  tunName := "tunnel"
+  specs := []string{}
+  for _,pair := range pairs {
+    from := pair.from
+    to := pair.to
+    
+    tunName = fmt.Sprintf( "%s_%d->%d", tunName, from, to )
+    //specs = append( specs, fmt.Sprintf("%d:%d",from,to) )
+    specs = append( specs, strconv.Itoa( from ) + ":" + strconv.Itoa( to ) )
+  }
+  
+  args := []string {
+    "tunnel",
+    "-id", self.udid,
+  }
+  args = append( args, specs... )
+  fmt.Printf("Starting %s with %s\n", "bin/iosif", args )
+  
+  o := ProcOptions{
+    procName: tunName,
+    binary: "bin/iosif",
+    args: args,
+    stdoutHandler: func( line string, plog *log.Entry ) {
+      //fmt.Printf( "tunnel:%s\n", line )
+      if strings.Contains( line, "Ready" ) {
+        if onready != nil {
+          onready()
+        }
+      }
+    },
+    stderrHandler: func( line string, plog *log.Entry ) {
+      //fmt.Printf( "tunnel err:%s\n", line )
+    },
+    onStop: func( interface{} ) {
+      log.Printf("%s stopped\n", tunName)
+    },
+  }
+  proc_generic( self.procTracker, nil, &o )
 }
 
 /*func (self *GIDev) tunnel( pairs []TunPair, onready func() ) {

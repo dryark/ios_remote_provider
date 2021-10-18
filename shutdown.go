@@ -137,9 +137,7 @@ func cleanup_procs( config *Config ) {
             doKill := false        
             /*
             If using a singleId ( udid specified on CLI ), then we don't want to get rid of all
-            go-ios procs, only the ones associated with that ID. This could potentially leave
-            behind a "server" instance, and a "listen" instance. Those should be removed / handled
-            by the above standard code of already tracked procs.
+            go-ios procs, only the ones associated with that ID.
             */
             if len( config.idList ) > 0 {
                 for _, arg := range( proc.args ) {
@@ -162,6 +160,36 @@ func cleanup_procs( config *Config ) {
                     "pid":  pid,
                     "args": proc.args,
                 } ).Warn("Leftover go-ios - Sending SIGTERM")
+            }
+        }
+        if strings.Contains( proc.cmd, "iosif" ) {
+            pid := proc.pid //proc.PID()
+            doKill := false        
+            /*
+            If using a singleId ( udid specified on CLI ), then we don't want to get rid of all
+            iosif procs, only the ones associated with that ID.
+            */
+            if len( config.idList ) > 0 {
+                for _, arg := range( proc.args ) {
+                    for _, oneId := range( config.idList ) {
+                        if strings.Contains( arg, oneId ) {
+                            doKill = true
+                        }
+                    }
+                }
+            } else {
+                doKill = true
+            }
+            
+            if doKill == true {
+                syscall.Kill( pid, syscall.SIGTERM )
+                hangingPids = append( hangingPids, pid ) 
+           
+                plog.WithFields( log.Fields{
+                    "proc": "iosif",
+                    "pid":  pid,
+                    "args": proc.args,
+                } ).Warn("Leftover iosif - Sending SIGTERM")
             }
         }
     }
