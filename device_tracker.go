@@ -265,7 +265,7 @@ func (self *DeviceTracker) onDeviceConnect( uuid string, bdev BridgeDev ) (*Devi
     
     dev.info = devInfo
     dev.iosVersion = devInfo["ProductVersion"]
-    versionParts := strings.Split( ".", dev.iosVersion )
+    versionParts := strings.Split( dev.iosVersion, "." )
     
     majorStr := versionParts[0]
     dev.versionParts[0],_ = strconv.Atoi( majorStr )
