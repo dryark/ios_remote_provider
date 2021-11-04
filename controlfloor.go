@@ -148,6 +148,16 @@ func (self *CFR_Source) asText() string {
     return string(text)
 }
 
+type CFR_WifiIp struct {
+    Id int    `json:"id"`
+    Ip string `json:"ip"`
+}
+
+func (self *CFR_WifiIp) asText() string {
+    text, _ := json.Marshal( self )
+    return string(text)
+}
+
 func ( self *ControlFloor ) startVidStream( udid string ) {
     dev := self.DevTracker.getDevice( udid )
     dev.startVidStream()
@@ -347,6 +357,17 @@ func ( self *ControlFloor ) openWebsocket() {
                         if dev != nil {
                             source := dev.source()
                             respondChan <- &CFR_Source{ Id: id, Source: source } 
+                        } else  {
+                            respondChan <- &CFR_Pong{ id: id, text: "done" }
+                        }
+                    } ()
+                } else if mType == "wifiIp" {
+                    udid := root.Get("udid").String()
+                    go func() {
+                        dev := self.DevTracker.getDevice( udid )
+                        if dev != nil {
+                            ip := dev.WifiIp()
+                            respondChan <- &CFR_WifiIp{ Id: id, Ip: ip } 
                         } else  {
                             respondChan <- &CFR_Pong{ id: id, text: "done" }
                         }

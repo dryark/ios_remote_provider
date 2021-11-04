@@ -49,7 +49,7 @@ func main() {
         uc.OPT("-bi","Bundle ID",0),
     )
     uclop.AddCmd( "source",    "Get device xml source",            runSource,     sourceOpts )
-        
+    uclop.AddCmd( "wifiIp",    "Get Wifi IP address",              runWifiIp,     idOpt )
     uclop.AddCmd( "alertinfo", "Get alert info",                   runAlertInfo,  idOpt )
     uclop.AddCmd( "islocked",  "Check if device screen is locked", runIsLocked,   idOpt )
     uclop.AddCmd( "unlock",    "Unlock device screen",             runUnlock,     idOpt )
@@ -410,6 +410,13 @@ func runAlertInfo( cmd *uc.Cmd ) {
     cfaWrapped( cmd, "", func( cfa *CFA ) {
         _, json := cfa.AlertInfo()
         fmt.Println( json )
+    } )
+}
+
+func runWifiIp( cmd *uc.Cmd ) {
+    cfaWrapped( cmd, "", func( cfa *CFA ) {
+        ip := cfa.WifiIp()
+        fmt.Println( ip )
     } )
 }
 

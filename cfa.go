@@ -589,6 +589,13 @@ func (self *CFA) AlertInfo() ( uj.JNode, string ) {
     }
 }
 
+func (self *CFA) WifiIp() string {
+    self.nngSocket.Send([]byte(`{ action: "wifiIp" }`))
+    srcBytes, _ := self.nngSocket.Recv()
+    
+    return string(srcBytes)
+}
+
 func (self *CFA) SourceJson() string {
     self.nngSocket.Send([]byte(`{ action: "sourcej" }`))
     srcBytes, _ := self.nngSocket.Recv()
