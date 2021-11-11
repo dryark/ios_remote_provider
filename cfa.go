@@ -327,6 +327,28 @@ func (self *CFA) clickAt( x int, y int ) {
     self.nngSocket.Recv()
 }
 
+func (self *CFA) mouseDown( x int, y int ) {
+    json := fmt.Sprintf( `{
+        action: "mouseDown"
+        x:%d
+        y:%d
+    }`, x, y )
+    
+    self.nngSocket.Send([]byte(json))
+    self.nngSocket.Recv()
+}
+
+func (self *CFA) mouseUp( x int, y int ) {
+    json := fmt.Sprintf( `{
+        action: "mouseUp"
+        x:%d
+        y:%d
+    }`, x, y )
+    
+    self.nngSocket.Send([]byte(json))
+    self.nngSocket.Recv()
+}
+
 func (self *CFA) hardPress( x int, y int ) {
     log.Info( "Firm Press:", x, y )
     json := fmt.Sprintf( `{
@@ -357,8 +379,21 @@ func (self *CFA) home() (string) {
     json := `{
       action: "button"
       name: "home"
-      duration: 5
     }`
+    self.nngSocket.Send([]byte(json))
+    self.nngSocket.Recv()
+    
+    return ""
+}
+
+func (self *CFA) AT() (string) {
+    json := `{
+      action: "homebtn"
+    }`
+    self.nngSocket.Send([]byte(json))
+    self.nngSocket.Recv()
+    self.nngSocket.Send([]byte(json))
+    self.nngSocket.Recv()
     self.nngSocket.Send([]byte(json))
     self.nngSocket.Recv()
     
@@ -500,7 +535,7 @@ func (self *CFA) ElLongTouch( elId string ) {
     self.nngSocket.Recv()
 }
 
-func (self *CFA) GetEl( elType string, elName string, system bool, wait int ) string {
+func (self *CFA) GetEl( elType string, elName string, system bool, wait float32 ) string {
     log.Info( "getEl:", elName )
     
     sysLine := ""
@@ -510,7 +545,7 @@ func (self *CFA) GetEl( elType string, elName string, system bool, wait int ) st
     
     waitLine := ""
     if wait > 0 {
-        waitLine = fmt.Sprintf("wait:%d",wait)
+        waitLine = fmt.Sprintf("wait:%f",wait)
     }
     
     json := fmt.Sprintf( `{
@@ -541,10 +576,13 @@ func (self *CFA) WindowSize() (int,int) {
     return width,height
 }
 
-func (self *CFA) Source(bi string) string {
+func (self *CFA) Source(bi string, pid int) string {
     biLine := ""
     if bi != "" {
         biLine = "bi: \"" + bi + "\""
+    }
+    if pid != 0 {
+        biLine = fmt.Sprintf( "pid: %d", pid )
     }
     json := fmt.Sprintf( `{
         action: "source"
@@ -596,11 +634,25 @@ func (self *CFA) WifiIp() string {
     return string(srcBytes)
 }
 
+func (self *CFA) ActiveApps() string {
+    self.nngSocket.Send([]byte(`{ action: "activeApps" }`))
+    srcBytes, _ := self.nngSocket.Recv()
+    
+    return string(srcBytes)
+}
+
 func (self *CFA) SourceJson() string {
     self.nngSocket.Send([]byte(`{ action: "sourcej" }`))
     srcBytes, _ := self.nngSocket.Recv()
     
     return string(srcBytes)
+}
+
+func (self *CFA) ToLauncher() string {
+    self.nngSocket.Send([]byte(`{ action: "toLauncher" }`))
+    resp, _ := self.nngSocket.Recv()
+    
+    return string(resp)
 }
 
 func (self *CFA) Screenshot() []byte {
@@ -610,12 +662,44 @@ func (self *CFA) Screenshot() []byte {
     return imgBytes
 }
 
-func (self *CFA) AppAtPoint( x int, y int ) string {
+func (self *CFA) Siri(text string) {
+    self.nngSocket.Send([]byte(fmt.Sprintf(`{ action: "siri", text: "%s" }`, text)))
+    self.nngSocket.Recv()
+}
+
+func (self *CFA) ElByPid(pid int,json bool) string {
+    if json {
+        self.nngSocket.Send([]byte(fmt.Sprintf(`{ action: "elByPid", pid: %d, json: 1 }`, pid)))
+    } else {
+        self.nngSocket.Send([]byte(fmt.Sprintf(`{ action: "elByPid", pid: %d }`, pid)))
+    }
+    srcBytes, _ := self.nngSocket.Recv()
+    
+    return string(srcBytes)
+}
+
+func (self *CFA) PidChildWithWidth(pid int,width int) string {
+    self.nngSocket.Send([]byte(fmt.Sprintf(`{ action: "pidChildWithWidth", pid: %d, width: %d }`, pid, width)))
+    srcBytes, _ := self.nngSocket.Recv()
+    
+    return string(srcBytes)
+}
+
+func (self *CFA) AppAtPoint( x int, y int, asjson bool, nopid bool, top bool ) string {
+    jsonLine := ""
+    if asjson { jsonLine = "json: 1" }
+    pidLine := ""
+    if nopid { pidLine = "nopid: 1" }
+    topLine := ""
+    if top { topLine = "top: 1" }
     json := fmt.Sprintf( `{
         action: "elementAtPoint"
         x: %d
         y: %d
-    }`, x, y )
+        %s
+        %s
+        %s
+    }`, x, y, jsonLine, pidLine, topLine )
     self.nngSocket.Send([]byte(json))
     srcBytes, _ := self.nngSocket.Recv()
     
@@ -635,15 +719,17 @@ func (self *CFA) Unlock () {
     fmt.Printf("Result:%s\n", string( res ) )
 }
 
-func (self *CFA) OpenControlCenter( controlCenterMethod string ) {
+func (self *CFA) OpenControlCenter() {
+    ccMethod := self.dev.devConfig.controlCenterMethod
+  
     fmt.Printf("Opening control center\n")  
     width, height := self.WindowSize()
     
-    if controlCenterMethod == "bottomUp" {
+    if ccMethod == "bottomUp" {
         midx := width / 2
         maxy := height - 1
         self.swipe( midx, maxy, midx, maxy - 200, 0.2 )
-    } else if controlCenterMethod == "topDown" {
+    } else if ccMethod == "topDown" {
         maxx := width - 1
         self.swipe( maxx, 0, maxx, 200, 0.2 )
     }    
@@ -696,7 +782,6 @@ func (self *CFA) AddRecordingToCC() {
 
 func (self *CFA) StartBroadcastStream( appName string, bid string, devConfig *CDevice ) {
     method := devConfig.vidStartMethod
-    ccMethod := devConfig.controlCenterMethod
     ccRecordingMethod := devConfig.ccRecordingMethod
     
     sid := self.create_session( bid )
@@ -757,7 +842,7 @@ func (self *CFA) StartBroadcastStream( appName string, bid string, devConfig *CD
     } else if method == "controlCenter" {
         fmt.Printf("Starting vidApp through control center\n")
         time.Sleep( time.Second * 2 )
-        self.OpenControlCenter( ccMethod )
+        self.OpenControlCenter()
         //self.Source()
         
         devEl := self.GetEl( "button", "Screen Recording", true, 5 )
@@ -780,7 +865,9 @@ func (self *CFA) StartBroadcastStream( appName string, bid string, devConfig *CD
         time.Sleep( time.Second * 3 )
     } else if method == "manual" {
     }
-        
+    
+    self.ToLauncher()
+    
     time.Sleep( time.Second * 5 )
 }
 

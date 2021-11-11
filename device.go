@@ -8,9 +8,7 @@ import (
     "time"
     log "github.com/sirupsen/logrus"
     ws "github.com/gorilla/websocket"
-    //uj "github.com/nanoscopic/ujsonin/v2/mod"
-    //"go.nanomsg.org/mangos/v3"
-    //nanoReq  "go.nanomsg.org/mangos/v3/protocol/req"
+    uj "github.com/nanoscopic/ujsonin/v2/mod"
 )
 
 const (
@@ -18,6 +16,7 @@ const (
     VID_APP
     VID_BRIDGE
     VID_WDA
+    VID_CFA
     VID_ENABLE
     VID_DISABLE
     VID_END
@@ -50,7 +49,6 @@ type Device struct {
     vidControlPort  int
     vidLogPort      int
     backupVideoPort int
-    //mjpegVideoPort  int
     iosVersion      string
     versionParts    []int
     productType     string
@@ -62,7 +60,8 @@ type Device struct {
     owner           string
     connected       bool
     EventCh         chan DevEvent
-    BackupCh        chan BackupEvent
+    BackupCh        chan BackupEvent     
+    CFAFrameCh      chan BackupEvent
     cfa             *CFA
     wda             *WDA
     cfaRunning      bool
@@ -86,7 +85,6 @@ type Device struct {
 func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev BridgeDev ) (*Device) {
     dev := Device{
         devTracker:      devTracker,
-        //wdaPort:         devTracker.getPort(),
         wdaPortFixed:    false,
         cfaNngPort:      devTracker.getPort(),
         cfaNngPort2:     devTracker.getPort(),
@@ -95,7 +93,6 @@ func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev Bri
         vidMode:         VID_NONE,
         vidControlPort:  devTracker.getPort(),
         backupVideoPort: devTracker.getPort(),
-        //mjpegVideoPort:  devTracker.getPort(),
         backupActive:    false,
         config:          config,
         udid:            udid,
@@ -104,10 +101,10 @@ func NewDevice( config *Config, devTracker *DeviceTracker, udid string, bdev Bri
         cf:              devTracker.cf,
         EventCh:         make( chan DevEvent ),
         BackupCh:        make( chan BackupEvent ),
+        CFAFrameCh:      make( chan BackupEvent ),
         bridge:          bdev,
         cfaRunning:      false,
         versionParts:    []int{0,0,0},
-        //wdaRunning:      false,
     }
     if devConfig, ok := config.devs[udid]; ok {
         dev.devConfig = &devConfig
@@ -138,7 +135,6 @@ func ( self *Device ) releasePorts() {
     dt.freePort( self.vidLogPort )
     dt.freePort( self.vidControlPort )
     dt.freePort( self.backupVideoPort )
-    //dt.freePort( self.mjpegVideoPort )
 }
 
 func ( self *Device ) startProc( proc *GenericProc ) {
@@ -190,8 +186,15 @@ func (self *Device) onCfaReady() {
     // start video streaming
     
     self.forwardVidPorts( self.udid, func() {
-        self.enableVideo()
-        
+        videoMode := self.devConfig.videoMode 
+        if videoMode == "app" {
+            self.enableAppVideo()
+        } else if videoMode == "cfagent" {
+            self.enableCFAVideo()
+        } else {
+            // TODO error
+        }
+       
         self.startProcs2()
     } )
 }
@@ -261,7 +264,6 @@ func (self *Device) startBackupFrameProvider() {
             }
             if sending {
                 self.sendBackupFrame()
-                time.Sleep( time.Millisecond * 500 )
             } else {
                 time.Sleep( time.Millisecond * 100 )
             }
@@ -269,13 +271,51 @@ func (self *Device) startBackupFrameProvider() {
     }()
 }
 
+func (self *Device) startCFAFrameProvider() {
+    go func() {
+        sending := false
+        for {
+            select {
+                case ev := <- self.CFAFrameCh:
+                    action := ev.action
+                    if action == VID_ENABLE {
+                        sending = true
+                        fmt.Printf("cfa frame provider - enabling\n")
+                    } else if action == VID_DISABLE {
+                        sending = false
+                        fmt.Printf("cfa frame provider - disabled\n")
+                    } else if action == VID_END {
+                        break
+                    }
+                default:
+            }
+            if sending {
+                self.sendCFAFrame()
+            } else {
+                time.Sleep( time.Millisecond * 100 )
+            }
+        }
+    }()
+}
+
+func (self *Device) enableDefaultVideo() {
+    videoMode := self.devConfig.videoMode 
+    if videoMode == "app" {
+        self.vidMode = VID_APP
+        self.vidStreamer.forceOneFrame()
+    } else if videoMode == "cfagent" {
+        self.vidMode = VID_CFA
+    } else {
+        // TODO error
+    }
+}
+
 func (self *Device) disableBackupVideo() {
     fmt.Printf("Sending vid_disable\n")
     self.BackupCh <- BackupEvent{ action: VID_DISABLE }
     fmt.Printf("Sent vid_disable\n")
-    self.vidMode = VID_APP
     self.backupActive = false
-    self.vidStreamer.forceOneFrame()
+    self.enableDefaultVideo()
 }
 
 func (self *Device) enableBackupVideo() {
@@ -286,14 +326,46 @@ func (self *Device) enableBackupVideo() {
     self.backupActive = true
 }
 
+func (self *Device) disableCFAVideo() {
+    fmt.Printf("Sending vid_disable\n")
+    self.CFAFrameCh <- BackupEvent{ action: VID_DISABLE }
+    fmt.Printf("Sent vid_disable\n")
+    
+    self.enableDefaultVideo()
+}
+
+func (self *Device) enableCFAVideo() {
+    fmt.Printf("Sending vid_enable\n")
+    self.CFAFrameCh <- BackupEvent{ action: VID_ENABLE }
+    fmt.Printf("Sent vid_enable\n")
+    self.vidMode = VID_CFA
+    self.backupActive = true
+}
+
 func (self *Device) sendBackupFrame() {
-    if self.vidOut != nil {
+    vidOut := self.vidOut
+    if vidOut != nil {
         fmt.Printf("Fetching frame - ")
         pngData := self.backupVideo.GetFrame()
         fmt.Printf("%d bytes\n", len( pngData ) )
         if( len( pngData ) > 0 ) {
-            self.vidOut.WriteMessage( ws.BinaryMessage, pngData )
+            vidOut.WriteMessage( ws.BinaryMessage, pngData )
         }
+    } else {
+        time.Sleep( time.Millisecond * 100 )
+    }
+}
+
+func (self *Device) sendCFAFrame() {
+    vidOut := self.vidOut
+    if vidOut != nil {
+        pngData := self.cfa.Screenshot()
+        //fmt.Printf("%d bytes\n", len( pngData ) )
+        if( len( pngData ) > 0 ) {
+            vidOut.WriteMessage( ws.BinaryMessage, pngData )
+        }
+    } else {
+        time.Sleep( time.Millisecond * 100 )
     }
 }
 
@@ -343,6 +415,7 @@ func (self *Device) startProcs() {
     }
     
     self.startBackupFrameProvider() // just the timed loop
+    self.startCFAFrameProvider()
     self.backupVideo = self.bridge.NewBackupVideo( 
         self.backupVideoPort,
         func( interface{} ) {}, // onStop
@@ -420,14 +493,22 @@ func (self *Device) startProcs() {
 
 func (self *Device) startProcs2() {
     self.appStreamStopChan = make( chan bool )
-    self.vidStreamer = NewAppStream(
-        self.appStreamStopChan,
-        self.vidControlPort,
-        self.vidPort,
-        self.vidLogPort,
-        self.udid,
-        self )
-    self.vidStreamer.mainLoop()
+    
+    videoMode := self.devConfig.videoMode 
+    if videoMode == "app" {
+        self.vidStreamer = NewAppStream(
+            self.appStreamStopChan,
+            self.vidControlPort,
+            self.vidPort,
+            self.vidLogPort,
+            self.udid,
+            self )
+        self.vidStreamer.mainLoop()
+    } else if videoMode == "cfagent" {
+        // Nothing todo
+    } else {
+        // TODO error
+    }
     
     // Start WDA
     self.wda = NewWDA( self.config, self.devTracker, self )
@@ -441,7 +522,7 @@ func (self *Device) vidAppIsAlive() bool {
     return false
 }
 
-func (self *Device) enableVideo() {
+func (self *Device) enableAppVideo() {
     // check if video app is running
     vidPid := self.bridge.GetPid( self.config.vidAppExtBid )
     
@@ -502,7 +583,7 @@ func (self *Device) justStartBroadcast() {
     self.cfa.StartBroadcastStream( self.config.vidAppName, bid, self.devConfig )
 }
 
-func (self *Device) startVidStream() { // conn *ws.Conn ) {
+func (self *Device) startVidStream() {
     conn := self.cf.connectVidChannel( self.udid )
     
     imgData := self.cfa.Screenshot()
@@ -586,6 +667,14 @@ func (self *Device) clickAt( x int, y int ) {
     self.cfa.clickAt( x, y )
 }
 
+func (self *Device) mouseDown( x int, y int ) {
+    self.cfa.mouseDown( x, y )
+}
+
+func (self *Device) mouseUp( x int, y int ) {
+    self.cfa.mouseUp( x, y )
+}
+
 func (self *Device) hardPress( x int, y int ) {
     self.cfa.hardPress( x, y )
 }
@@ -596,6 +685,196 @@ func (self *Device) longPress( x int, y int ) {
 
 func (self *Device) home() {
     self.cfa.home()
+}
+
+func findNodeWithAtt( cur uj.JNode, att string, label string ) uj.JNode {
+    lNode := cur.Get(att)
+    if lNode != nil {
+        if lNode.String() == label { return cur }
+    }
+
+    cNode := cur.Get("c")
+    if cNode == nil { return nil }
+    
+    var gotIt uj.JNode
+    cNode.ForEach( func( child uj.JNode ) {
+        res := findNodeWithAtt( child, att, label )
+        if res != nil { gotIt = res }
+    } )
+    return gotIt
+}
+
+// Assumes AssistiveTouch is enabled already
+func (self *Device) openAssistiveTouch( pid int32 ) int {
+    y := 0
+    i := 0
+    for {
+        i++
+        if i>10 {
+            fmt.Printf("AssistiveTouch icon did not appear\n")
+            return 0
+        }
+        json := self.cfa.ElByPid( int(pid), true )
+        // Todo; element may not be there
+        root, _ := uj.Parse( []byte(json) )
+        btnNode := findNodeWithAtt( root, "label", "AssistiveTouch menu" )
+        if btnNode == nil {
+            time.Sleep( time.Millisecond * 100 )
+            continue
+        }
+        x := btnNode.Get("x").Int()
+        y = btnNode.Get("y").Int()
+        x += 20
+        y += 20
+        time.Sleep( time.Millisecond * 100 )
+        self.cfa.clickAt( x / 2, y / 2 )
+        break
+    }
+    
+    return y
+}
+
+func (self *Device) taskSwitcher() {
+    //self.cfa.Siri("activate assistivetouch")
+    
+    self.enableAssistiveTouch()
+    
+    _, pid := self.isAssistiveTouchEnabled()
+    
+    y := self.openAssistiveTouch( pid )
+    
+    i := 0
+    for {
+        i++
+        if i>10 {
+            fmt.Printf("Could not find multitasking button")
+            return
+        }
+        
+        // TODO don't use hardcoded screen center
+        atJson := self.cfa.AppAtPoint( 187, y/2, true, true, false )
+        fmt.Println( atJson )
+        
+        root2, _ := uj.Parse( []byte(atJson) )
+        taskNode := findNodeWithAtt( root2, "label", "Multitasking" )
+        if taskNode == nil {
+            time.Sleep( time.Millisecond * 100 )
+            continue
+        }
+        x2 := taskNode.Get("x").Int()
+        y2 := taskNode.Get("y").Int()
+        x2 += 20
+        y2 += 20
+        time.Sleep( time.Millisecond * 200 )
+        self.cfa.clickAt( x2 / 2, y2 / 2 )
+        break
+    }
+    
+    // Todo: Wait for task switcher to actually appear
+    //time.Sleep( time.Millisecond * 600 )
+    //self.cfa.GetEl("other", "SBSwitcherWindow", false, 1 )
+    i = 0
+    for {
+        i++
+        if i>20 {
+            fmt.Printf("Task Switcher did not appear\n")
+            return
+        }
+        centerScreenJson := self.cfa.AppAtPoint( 187, 333, true, true, true );
+        root3, _ := uj.Parse( []byte(centerScreenJson) )
+        closeBox := findNodeWithAtt( root3, "id", "appCloseBox" )
+        if closeBox != nil { break }
+        time.Sleep( time.Millisecond * 100 )
+        //fmt.Printf("Task switcher appeared\n")
+    }
+    
+    self.disableAssistiveTouch()
+}
+
+func (self *Device) shake() {
+    self.enableAssistiveTouch()
+    
+    self.disableAssistiveTouch()
+}
+
+func (self *Device) cc() {
+    self.cfa.OpenControlCenter()
+}
+
+func (self *Device) isAssistiveTouchEnabled() (bool, int32) {
+    var pid int32
+    procs := self.bridge.ps()
+    for _,proc := range procs {
+        if proc.name == "assistivetouchd" {
+            pid = proc.pid
+            break
+        } 
+    }
+    if pid != 0 { return true, pid }
+    return false, 0
+}
+
+func (self *Device) enableAssistiveTouch() {
+    enabled, _ := self.isAssistiveTouchEnabled()
+    if !enabled { self.toggleAssistiveTouch() }
+    
+    /*i := 0
+    var pid int32
+    for {
+        i++
+        if i> 20 { // Wait up to 4 seconds for it to start
+            fmt.Printf("AssistiveTouch process did not start")
+            return
+        }
+        
+        procs := self.bridge.ps()
+        for _,proc := range procs {
+            if proc.name == "assistivetouchd" {
+                pid = proc.pid
+                break
+            } 
+        }
+        if pid != 0 { break }
+        time.Sleep( time.Millisecond * 200 )
+    }*/
+}
+
+func (self *Device) disableAssistiveTouch() {
+    enabled, _ := self.isAssistiveTouchEnabled()
+    if enabled { self.toggleAssistiveTouch() }
+    
+    /*i = 0
+    for {
+        i++
+        if i > 20 { // Wait up to 4 seconds for it to stop
+            fmt.Printf("AssistiveTouch process did not stop")
+            return
+        }
+        
+        procs := self.bridge.ps()
+        pid = 0
+        for _,proc := range procs {
+            if proc.name == "assistivetouchd" {
+                pid = proc.pid
+                break
+            } 
+        }
+        if pid == 0 { break }
+        time.Sleep( time.Millisecond * 200 )
+    }*/
+}
+
+func (self *Device) toggleAssistiveTouch() {
+    cfa := self.cfa
+    self.cc()
+    shortcutsBtn := cfa.GetEl( "button", "Accessibility Shortcuts", true, 2 )
+    cfa.ElClick( shortcutsBtn )
+    atBtn := cfa.GetEl( "button", "AssistiveTouch", true, 2 )
+    cfa.ElClick( atBtn )
+    time.Sleep( time.Millisecond * 100 )
+    cfa.home()
+    time.Sleep( time.Millisecond * 300 )
+    cfa.home()
 }
 
 func (self *Device) iohid( page int, code int ) {
@@ -623,4 +902,15 @@ func (self *Device) source() string {
 
 func (self *Device) WifiIp() string {
     return self.cfa.WifiIp()
+}
+
+func (self *Device) AppAtPoint(x int, y int) string {
+    return self.cfa.AppAtPoint(x,y,false,false,false)
+}
+
+func (self *Device) WifiMac() string {
+    info := self.bridge.info( []string{"WiFiAddress"} )
+    val, ok := info["WiFiAddress"]
+    if ok { return val }
+    return "unknown"
 }

@@ -18,6 +18,12 @@ type WDA struct {
 func NewWDA( config *Config, devTracker *DeviceTracker, dev *Device ) (*WDA) {
     self := NewWDANoStart( config, devTracker, dev )
     
+    fmt.Printf("WDA Method:%s\n", dev.devConfig.wdaMethod )
+    
+    if dev.devConfig.wdaMethod == "" {
+        return self
+    }
+    
     //if config.wdaMethod != "manual" {
         self.start( nil )
     //} else {

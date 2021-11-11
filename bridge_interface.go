@@ -58,6 +58,7 @@ type BridgeDev interface {
   Kill( pid uint64 )
   SetConfig( devConfig *CDevice )
   SetDevice( device *Device )
+  SetCustom( name string, val interface{} )
 }
 
 type BackupVideo interface {

@@ -444,6 +444,29 @@ func (self *GIDev) info( names []string ) map[string]string {
     return mapped
 }
 
+/*func (self *GIDev) info( names []string ) map[string]string {
+    mapped := make( map[string]string )
+    
+    lockdownConnection, err := ios.ConnectLockdownWithSession( self.goIosDevice )
+    if err != nil {
+        fmt.Printf("lockdown connection err:%s", err )
+        return mapped
+    }
+    defer lockdownConnection.Close()
+    
+    for _,name := range names {
+        value, err := lockdownConnection.GetValue( name )
+        if err == nil {
+            strVal, ok := value.(string)
+            if ok {
+                mapped[ name ] = strVal
+            }
+        }
+    }
+    
+    return mapped
+}*/
+
 func (self *GIDev) gestalt( names []string ) map[string]string {
     mapped := make( map[string]string )
     args := []string{
@@ -491,7 +514,23 @@ func (self *GIDev) gestaltnode( names []string ) map[string]uj.JNode {
 }
 
 func (self *GIDev) ps() []iProc {
-    return []iProc{}
+    args := []string{
+        "ps",
+        "--udid", self.udid,
+    }
+    fmt.Printf("Running %s %s\n", self.bridge.cli, args );
+    json, _ := exec.Command( self.bridge.cli, args... ).Output()
+    //fmt.Printf("json:%s\n",json)
+    root, _ := uj.Parse( json )
+    
+    procs := []iProc{}
+    root.ForEach( func( procNode uj.JNode ) {
+        procs = append( procs, iProc{
+            pid: int32( procNode.Get("Pid").Int() ),
+            name: procNode.Get("Name").String(),
+        } )
+    } )
+    return procs
 }
 
 func (self *GIDev) screenshot() Screenshot {
@@ -998,4 +1037,10 @@ func (self *GIDev) SetConfig( config *CDevice ) {
 
 func (self *GIDev) SetDevice( device *Device ) {
     self.device = device
+}
+
+func (self *GIDev) SetCustom( name string, val interface{} ) {
+    if name == "goIosDevice" {
+        self.goIosDevice = val.(ios.DeviceEntry)
+    }
 }

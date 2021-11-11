@@ -149,8 +149,9 @@ func (self *CFR_Source) asText() string {
 }
 
 type CFR_WifiIp struct {
-    Id int    `json:"id"`
-    Ip string `json:"ip"`
+    Id int     `json:"id"`
+    Ip string  `json:"ip"`
+    Mac string `json:"mac"`
 }
 
 func (self *CFR_WifiIp) asText() string {
@@ -280,6 +281,28 @@ func ( self *ControlFloor ) openWebsocket() {
                         }
                         respondChan <- &CFR_Pong{ id: id, text: "done" }
                     } ()
+                } else if mType == "mouseDown" {
+                    udid := root.Get("udid").String()
+                    x := root.Get("x").Int()
+                    y := root.Get("y").Int()
+                    go func() {
+                        dev := self.DevTracker.getDevice( udid )
+                        if dev != nil {
+                            dev.mouseDown( x, y )
+                        }
+                        respondChan <- &CFR_Pong{ id: id, text: "done" }
+                    } ()
+                } else if mType == "mouseUp" {
+                    udid := root.Get("udid").String()
+                    x := root.Get("x").Int()
+                    y := root.Get("y").Int()
+                    go func() {
+                        dev := self.DevTracker.getDevice( udid )
+                        if dev != nil {
+                            dev.mouseUp( x, y )
+                        }
+                        respondChan <- &CFR_Pong{ id: id, text: "done" }
+                    } ()
                 } else if mType == "hardPress" {
                     udid := root.Get("udid").String()
                     x := root.Get("x").Int()
@@ -306,6 +329,42 @@ func ( self *ControlFloor ) openWebsocket() {
                         dev := self.DevTracker.getDevice( udid )
                         if dev != nil {
                             dev.home()
+                        }
+                        respondChan <- &CFR_Pong{ id: id, text: "done" }
+                    } ()
+                } else if mType == "taskSwitcher" {
+                    udid := root.Get("udid").String()
+                    go func() {
+                        dev := self.DevTracker.getDevice( udid )
+                        if dev != nil {
+                            dev.taskSwitcher()
+                        }
+                        respondChan <- &CFR_Pong{ id: id, text: "done" }
+                    } ()
+                } else if mType == "shake" {
+                    udid := root.Get("udid").String()
+                    go func() {
+                        dev := self.DevTracker.getDevice( udid )
+                        if dev != nil {
+                            dev.shake()
+                        }
+                        respondChan <- &CFR_Pong{ id: id, text: "done" }
+                    } ()
+                } else if mType == "cc" {
+                    udid := root.Get("udid").String()
+                    go func() {
+                        dev := self.DevTracker.getDevice( udid )
+                        if dev != nil {
+                            dev.cc()
+                        }
+                        respondChan <- &CFR_Pong{ id: id, text: "done" }
+                    } ()
+                } else if mType == "assistiveTouch" {
+                    udid := root.Get("udid").String()
+                    go func() {
+                        dev := self.DevTracker.getDevice( udid )
+                        if dev != nil {
+                            dev.toggleAssistiveTouch()
                         }
                         respondChan <- &CFR_Pong{ id: id, text: "done" }
                     } ()
@@ -367,7 +426,8 @@ func ( self *ControlFloor ) openWebsocket() {
                         dev := self.DevTracker.getDevice( udid )
                         if dev != nil {
                             ip := dev.WifiIp()
-                            respondChan <- &CFR_WifiIp{ Id: id, Ip: ip } 
+                            mac := dev.WifiMac()
+                            respondChan <- &CFR_WifiIp{ Id: id, Ip: ip, Mac: mac } 
                         } else  {
                             respondChan <- &CFR_Pong{ id: id, text: "done" }
                         }

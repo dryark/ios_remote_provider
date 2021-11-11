@@ -710,3 +710,6 @@ func (self *IIFDev) SetConfig( config *CDevice ) {
 func (self *IIFDev) SetDevice( device *Device ) {
     self.device = device
 }
+
+func (self *IIFDev) SetCustom( name string, val interface{} ) {
+}
