@@ -183,11 +183,19 @@ func ( self *ControlFloor ) connectVidChannel( udid string ) *ws.Conn {
     
     fmt.Printf("Connecting to CF imgStream\n")
     var conn *ws.Conn
+    var resp *http.Response
     for i:=0; i<5; i++ {
         var err error
-        conn, _, err = dialer.Dial( self.wsBase + "/provider/imgStream?udid=" + udid, nil )
+        conn, resp, err = dialer.Dial( self.wsBase + "/provider/imgStream?udid=" + udid, nil )
         if err != nil {
             fmt.Printf( "Error dialing imgStream: %s\n", err )
+            fmt.Printf( "Status code: %d", resp.StatusCode )
+            resp.Body.Close()
+            bytes, err := ioutil.ReadAll( resp.Body )
+            if err == nil && len( bytes ) > 0 {
+                fmt.Printf("Body: %s\n", string(bytes) )
+            }
+            time.Sleep( time.Millisecond * 100 )
             continue
         }
         break
