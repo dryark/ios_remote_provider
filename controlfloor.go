@@ -188,7 +188,7 @@ func ( self *ControlFloor ) connectVidChannel( udid string ) *ws.Conn {
         var err error
         conn, resp, err = dialer.Dial( self.wsBase + "/provider/imgStream?udid=" + udid, nil )
         if err != nil {
-            fmt.Printf( "Error dialing imgStream: %s\n", err )
+            fmt.Printf( "Error dialing:%s\n", err )
             fmt.Printf( "Status code: %d", resp.StatusCode )
             resp.Body.Close()
             bytes, err := ioutil.ReadAll( resp.Body )
@@ -448,6 +448,16 @@ func ( self *ControlFloor ) openWebsocket() {
                     } ()
                 } else if mType == "shutdown" {
                     do_shutdown( self.config, self.DevTracker )
+                } else if mType == "kill" {
+                    udid := root.Get("udid").String()
+                    bid := root.Get("bid").String()
+                    dev := self.DevTracker.getDevice( udid )
+                    dev.killBid( bid )
+                } else if mType == "launch" {
+                    udid := root.Get("udid").String()
+                    bid := root.Get("bid").String()
+                    dev := self.DevTracker.getDevice( udid )
+                    dev.launch( bid )
                 }
             }
         }

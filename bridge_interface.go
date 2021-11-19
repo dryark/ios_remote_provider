@@ -56,6 +56,8 @@ type BridgeDev interface {
   LaunchApp( bundleId string ) bool
   NewSyslogMonitor( handleLogItem func( msg string, app string ) )
   Kill( pid uint64 )
+  KillBid( bid string )
+  Launch( bid string )
   SetConfig( devConfig *CDevice )
   SetDevice( device *Device )
   SetCustom( name string, val interface{} )

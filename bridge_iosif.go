@@ -313,6 +313,12 @@ func (self *IIFDev) GetPid( appname string ) uint64 {
 func (self *IIFDev) Kill( pid uint64 ) {
 }
 
+func (self *IIFDev) KillBid( bid string ) {
+}
+
+func (self *IIFDev) Launch( bid string ) {
+}
+
 func (self *IIFDev) AppInfo( bundleId string ) uj.JNode {
   json, err := exec.Command( self.bridge.cli,
     []string{

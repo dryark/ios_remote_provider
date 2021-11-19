@@ -914,3 +914,11 @@ func (self *Device) WifiMac() string {
     if ok { return val }
     return "unknown"
 }
+
+func (self *Device) killBid( bid string ) {
+    self.bridge.KillBid( bid )
+}
+
+func (self *Device) launch( bid string ) {
+    self.bridge.Launch( bid )
+}

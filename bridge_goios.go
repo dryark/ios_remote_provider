@@ -365,6 +365,28 @@ func (self *GIDev) Kill( pid uint64 ) {
     ).Output()
 }
 
+func (self *GIDev) KillBid( bid string ) {
+    fmt.Printf("Killing bundle id %s\n", bid )
+    
+    exec.Command( self.bridge.cli,
+        []string{
+            "kill", fmt.Sprintf("%s", bid ),
+            "--udid", self.udid,
+        }...
+    ).Output()
+}
+
+func (self *GIDev) Launch( bid string ) {
+    fmt.Printf("Launching bundle id %d\n", bid )
+    
+    exec.Command( self.bridge.cli,
+        []string{
+            "launch", fmt.Sprintf("%s", bid ),
+            "--udid", self.udid,
+        }...
+    ).Output()
+}
+
 func (self *GIDev) AppInfo( bundleId string ) uj.JNode {
     json, err := exec.Command( self.bridge.cli,
         []string{
