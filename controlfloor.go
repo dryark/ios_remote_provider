@@ -331,10 +331,12 @@ func ( self *ControlFloor ) openWebsocket() {
                     udid := root.Get("udid").String()
                     x := root.Get("x").Int()
                     y := root.Get("y").Int()
+                    time, _ := strconv.ParseFloat( root.Get("time").String(), 64 )
+                    
                     go func() {
                         dev := self.DevTracker.getDevice( udid )
                         if dev != nil {
-                            dev.longPress( x, y )
+                            dev.longPress( x, y, time )
                         }
                     } ()
                 } else if mType == "home" {

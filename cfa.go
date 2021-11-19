@@ -355,21 +355,21 @@ func (self *CFA) hardPress( x int, y int ) {
         action: "tapFirm"
         x:%d
         y:%d
-        pressure:3000
+        pressure:1
     }`, x, y )
     
     self.nngSocket.Send([]byte(json))
     self.nngSocket.Recv()
 }
 
-func (self *CFA) longPress( x int, y int ) {
-    log.Info( "Press for time:", x, y, 1.0 )
+func (self *CFA) longPress( x int, y int, time float64 ) {
+    log.Info( "Press for time:", x, y, time )
     json := fmt.Sprintf( `{
         action: "tapTime"
         x:%d
         y:%d
-        time:1.0
-    }`, x, y )
+        time:%f
+    }`, x, y, time )
     
     self.nngSocket.Send([]byte(json))
     self.nngSocket.Recv()
