@@ -455,11 +455,13 @@ func ( self *ControlFloor ) openWebsocket() {
                     bid := root.Get("bid").String()
                     dev := self.DevTracker.getDevice( udid )
                     dev.killBid( bid )
+                    respondChan <- &CFR_Pong{ id: id, text: "done" }
                 } else if mType == "launch" {
                     udid := root.Get("udid").String()
                     bid := root.Get("bid").String()
                     dev := self.DevTracker.getDevice( udid )
                     dev.launch( bid )
+                    respondChan <- &CFR_Pong{ id: id, text: "done" }
                 }
             }
         }
