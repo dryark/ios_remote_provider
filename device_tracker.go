@@ -143,6 +143,7 @@ func (self *DeviceTracker) onDeviceConnect1( bdev BridgeDev ) *Device {
     
     if !self.cf.ready {
         self.pendingDevs = append( self.pendingDevs, bdev )
+        self.cf.delayed = true
         fmt.Printf("Device attached, but ControlFloor not ready.\n  udid=%s\n", udid )
         return nil
     }
